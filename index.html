@@ -639,7 +639,7 @@ select option{background:var(--s2);}
 
   <div class="notice">
     <span>🛡️</span>
-    <span>Data terenkripsi AES-256 di browser. Gunakan <strong>Ekspor</strong> untuk backup file <code>.vault</code> terenkripsi, atau <strong>Sync</strong> untuk kirim ke perangkat lain via QR / teks terenkripsi.</span>
+    <span>Data terenkripsi AES-256 di browser. Gunakan <strong>Ekspor</strong> untuk backup — <strong>wajib dilakukan</strong> setelah setup agar tidak perlu setup ulang jika ada update. File <code>.vault</code> bisa di-impor kapan saja.</span>
   </div>
 
   <div class="stats">
@@ -1089,12 +1089,13 @@ async function unlockVault() {
       vault = data.vault || [];
       vaultMeta = data.meta || {};
       masterPw = pw;
-      // If no PIN yet, offer to create one
-      if (!hasPin()) {
-        setupPinAfterVaultCreation();
+      // Jika sudah pernah skip PIN atau sudah ada PIN
+      if (!hasPin() && !localStorage.getItem('vault_pin_skipped')) {
+        setupPinAfterVaultCreation(); // Belum ada PIN, belum pernah skip → tawarkan
       } else {
         openVaultAfterAuth();
-        toast('✅ Vault dibuka!');
+        if (!hasPin()) toast('🔓 Vault dibuka!');
+        else toast('✅ Vault dibuka!');
       }
       return;
     } catch(e) {
@@ -1478,8 +1479,8 @@ function setSyncTab(name,btn) {
   document.getElementById('sp-'+name).classList.add('on');
 }
 async function genQR() {
-  if (vault.length===0) { toast('⚠️ Vault kosong'); return; }
-  const payload = JSON.stringify({ vault, meta: {hint:vaultMeta.hint} });
+  if (!masterPw) { toast('⚠️ Buka vault dulu'); return; }
+  const payload = JSON.stringify({ vault, meta: {hint:vaultMeta.hint, recovery:vaultMeta.recovery||''} });
   const encrypted = await ENC.encrypt(payload, masterPw);
   const syncPayload = 'VAULT2:'+encrypted;
   const container = document.getElementById('qr-canvas');
@@ -1489,8 +1490,8 @@ async function genQR() {
   new QRCode(container, { text: syncPayload, width:220, height:220, colorDark:'#000', colorLight:'#fff', correctLevel:QRCode.CorrectLevel.M });
 }
 async function genText() {
-  if (vault.length===0) { toast('⚠️ Vault kosong'); return; }
-  const payload = JSON.stringify({ vault, meta:{hint:vaultMeta.hint} });
+  if (!masterPw) { toast('⚠️ Buka vault dulu'); return; }
+  const payload = JSON.stringify({ vault, meta:{hint:vaultMeta.hint, recovery:vaultMeta.recovery||''} });
   const encrypted = await ENC.encrypt(payload, masterPw);
   const syncPayload = 'VAULT2:'+encrypted;
   document.getElementById('enc-text-display').textContent = syncPayload;
@@ -1544,16 +1545,35 @@ function startQRScan() {
 // EXPORT / IMPORT FILE
 // ════════════════════════════════
 async function exportVault() {
-  if (vault.length===0) { toast('⚠️ Vault kosong'); return; }
-  const payload = JSON.stringify({ vault, meta:{hint:vaultMeta.hint, recoveryHash:vaultMeta.recoveryHash} });
+  if (!masterPw) { toast('⚠️ Buka vault dulu sebelum ekspor'); return; }
+  // Sertakan vault (meski kosong) + meta + recovery
+  const payload = JSON.stringify({
+    vault,
+    meta: {
+      hint: vaultMeta.hint,
+      recoveryHash: vaultMeta.recoveryHash,
+      recovery: vaultMeta.recovery || ''
+    }
+  });
   const encrypted = await ENC.encrypt(payload, masterPw);
-  const fileData = JSON.stringify({ format:'vault2', hint:vaultMeta.hint||'', data:encrypted });
-  const blob = new Blob([fileData],{type:'application/json'});
+  const fileData = JSON.stringify({
+    format: 'vault2',
+    hint: vaultMeta.hint || '',
+    data: encrypted,
+    count: vault.length,
+    exportedAt: new Date().toISOString()
+  });
+  const blob = new Blob([fileData], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href=url; a.download=`vault-backup-${new Date().toISOString().slice(0,10)}.vault`;
-  a.click(); URL.revokeObjectURL(url);
-  toast('💾 File .vault terenkripsi diunduh!');
+  a.href = url;
+  a.download = `vault-backup-${new Date().toISOString().slice(0,10)}.vault`;
+  a.click();
+  URL.revokeObjectURL(url);
+  const msg = vault.length > 0
+    ? `💾 Backup berhasil! (${vault.length} akun terenkripsi)`
+    : '💾 Backup berhasil! (meta & recovery tersimpan)';
+  toast(msg);
 }
 async function importVaultFile(event) {
   const file = event.target.files[0];
@@ -1670,14 +1690,14 @@ function toast(msg) {
 }
 
 // Modal close on overlay click
-['modal-entry','modal-sync','modal-settings','modal-install','modal-cats','modal-emoji','modal-move-cat'].forEach(id=>{
+['modal-entry','modal-sync','modal-settings','modal-install','modal-cats','modal-emoji','modal-move-cat','modal-emergency-backup'].forEach(id=>{
   const el = document.getElementById(id);
   if(el) el.addEventListener('click',function(e){
     if(e.target===this) closeModal(id);
   });
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape') ['modal-entry','modal-sync','modal-settings','modal-install','modal-cats','modal-emoji','modal-move-cat'].forEach(closeModal);
+  if(e.key==='Escape') ['modal-entry','modal-sync','modal-settings','modal-install','modal-cats','modal-emoji','modal-move-cat','modal-emergency-backup'].forEach(closeModal);
   if((e.ctrlKey||e.metaKey)&&e.key==='n'&&document.getElementById('main-app').style.display==='block'){
     e.preventDefault();openAdd();
   }
@@ -1753,6 +1773,7 @@ async function submitPinSetup() {
 }
 
 function skipPinSetup() {
+  localStorage.setItem('vault_pin_skipped', '1'); // flag: user memilih tanpa PIN
   document.getElementById('pin-setup-overlay').style.display = 'none';
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
@@ -2074,6 +2095,39 @@ function selectEmojiForNew(emoji) {
   document.getElementById('new-cat-icon').value = emoji;
   document.getElementById('new-cat-icon-preview').textContent = emoji;
   closeModal('modal-emoji');
+}
+
+function showEmergencyBackup() {
+  const recovery = vaultMeta.recovery || '';
+  const hint = vaultMeta.hint || '(tidak ada hint)';
+  if (!recovery) {
+    toast('⚠️ Recovery phrase tidak ditemukan di sesi ini. Ekspor file .vault terlebih dahulu.');
+    return;
+  }
+  closeModal('modal-settings');
+  const words = recovery.split(' ');
+  const wordHtml = words.map((w, i) =>
+    `<div style="background:#0e0f1a;border:1px solid #2b2d42;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px;">
+       <span style="color:#f0a500;font-size:11px;font-weight:700;width:16px;">${i+1}</span>
+       <span style="font-weight:600;font-family:var(--mono);">${w}</span>
+     </div>`
+  ).join('');
+  document.getElementById('emergency-backup-content').innerHTML = `
+    <div style="background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.3);border-radius:10px;padding:14px;margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:700;color:#f0a500;margin-bottom:4px;">⚠️ JANGAN SCREENSHOT — TULIS TANGAN</div>
+      <div style="font-size:12px;color:#9294ae;">Simpan di tempat fisik yang aman (kertas, buku catatan)</div>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:#9294ae;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Recovery Phrase (5 Kata)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">${wordHtml}</div>
+    <div style="background:#0e0f1a;border-radius:8px;padding:12px;margin-bottom:16px;">
+      <div style="font-size:11px;color:#6b6d85;margin-bottom:4px;">Password Hint</div>
+      <div style="font-size:13px;font-weight:600;">${hint}</div>
+    </div>
+    <div style="font-size:11px;color:#6b6d85;line-height:1.7;">
+      Cara pakai: buka Vault → tombol <strong>Recovery</strong> di lock screen → masukkan 5 kata ini → reset master password baru.
+    </div>
+  `;
+  document.getElementById('modal-emergency-backup').classList.add('open');
 }
 
 // ════════════════════════════════
@@ -2605,6 +2659,12 @@ window.addEventListener('load', () => {
   <div style="background:#0e0f1a;border-radius:10px;padding:14px;">
     <div style="font-size:12px;color:#6b6d85;line-height:1.8;">
       <div>🔐 Enkripsi: <span style="color:#9294ae;">AES-256-GCM + PBKDF2×2 (600k+100k iter)</span></div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #2b2d42;">
+          <button class="btn btn-ghost btn-sm" onclick="showEmergencyBackup()" style="width:100%;justify-content:center;border-color:#f0a500;color:#f0a500;">
+            🆘 Lihat Recovery Phrase
+          </button>
+          <div style="font-size:10px;color:#4a4b5a;margin-top:6px;text-align:center;">Simpan 5 kata ini — bisa dipakai reset jika lupa master password</div>
+        </div>
       <div>📦 Vault v3.0</div>
       <div style="margin-top:8px;font-size:11px;color:#4a4b5a;">⚠️ Auto-save menyimpan data terenkripsi di localStorage browser ini saja. Data tidak tersinkron ke perangkat lain — tetap gunakan Ekspor untuk backup.</div>
     </div>
@@ -2726,6 +2786,18 @@ window.addEventListener('load', () => {
   <div style="display:flex;gap:8px;margin-top:16px;">
     <button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="closeModal('modal-move-cat')">Batal</button>
     <button class="btn btn-danger" style="flex:1;justify-content:center;" id="move-cat-confirm">Hapus & Pindah</button>
+  </div>
+</div>
+</div>
+
+
+<!-- ══ MODAL EMERGENCY BACKUP ══ -->
+<div class="overlay" id="modal-emergency-backup">
+<div class="modal" style="max-width:400px;">
+  <div class="modal-title">🆘 Recovery Phrase</div>
+  <div id="emergency-backup-content"></div>
+  <div style="margin-top:16px;padding-top:14px;border-top:1px solid #2b2d42;">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-emergency-backup')">Tutup</button>
   </div>
 </div>
 </div>
