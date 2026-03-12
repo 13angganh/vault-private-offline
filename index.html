@@ -1763,9 +1763,10 @@ async function submitPinSetup() {
     document.getElementById('main-app').style.display = 'block';
     render();
     if (autoLockMinutes > 0) scheduleAutoLock();
+    // Simpan langsung sekarang (termasuk recovery phrase) — jangan tunggu debounce
+    await saveToLocal();
     if (ok) {
       toast('✅ Vault dibuat! PIN tersimpan.');
-      if (autoSaveEnabled) scheduleAutoSave();
     } else {
       toast('✅ Vault dibuat! (PIN gagal disimpan)');
     }
@@ -1773,14 +1774,14 @@ async function submitPinSetup() {
 }
 
 function skipPinSetup() {
-  localStorage.setItem('vault_pin_skipped', '1'); // flag: user memilih tanpa PIN
+  localStorage.setItem('vault_pin_skipped', '1');
   document.getElementById('pin-setup-overlay').style.display = 'none';
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   render();
   if (autoLockMinutes > 0) scheduleAutoLock();
   toast('✅ Vault berhasil dibuat!');
-  if (autoSaveEnabled) scheduleAutoSave();
+  saveToLocal(); // Simpan langsung termasuk recovery phrase
 }
 
 // ════════════════════════════════
