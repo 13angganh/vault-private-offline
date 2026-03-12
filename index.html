@@ -546,6 +546,7 @@ select option{background:var(--s2);}
         📤 Impor
         <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
       </label>
+      <button class="btn btn-ghost btn-sm" onclick="openInstallGuide()">📲 Install App</button>
       <button class="btn btn-danger btn-sm" onclick="lockApp()">🔒 Kunci</button>
       <button class="btn btn-gold btn-sm" onclick="openAdd()">+ Tambah</button>
     </div>
@@ -1393,9 +1394,170 @@ window.addEventListener('load',()=>{
   if (!masterPw) document.getElementById('no-vault-msg').style.display='block';
 });
 </script>
+
+<!-- ══════════════════════════════════════
+     MODAL INSTALL GUIDE
+══════════════════════════════════════ -->
+<div class="overlay" id="modal-install">
+<div class="modal" style="max-width:420px;">
+  <div class="modal-title">📲 Tambah ke Layar Beranda</div>
+
+  <!-- Auto install button (Android Chrome) -->
+  <div id="install-auto" style="display:none;margin-bottom:18px;">
+    <div style="background:rgba(0,212,170,.07);border:1px solid rgba(0,212,170,.2);border-radius:12px;padding:14px 16px;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:700;color:#00d4aa;margin-bottom:4px;">✅ Bisa install langsung!</div>
+      <div style="font-size:12px;color:#9294ae;line-height:1.5;">Chrome mendeteksi Vault bisa diinstall sebagai app.</div>
+    </div>
+    <button onclick="doInstall()" class="btn btn-gold" style="width:100%;justify-content:center;font-size:15px;padding:14px;">
+      📲 Install Vault Sekarang
+    </button>
+  </div>
+
+  <!-- Tabs for manual guide -->
+  <div id="install-manual">
+    <div style="font-size:12px;color:#9294ae;margin-bottom:14px;line-height:1.5;">Pilih browser / perangkat kamu:</div>
+    <div style="display:flex;gap:6px;background:#07080f;border-radius:10px;padding:4px;margin-bottom:20px;" id="install-tabs">
+      <button class="install-tab on" onclick="setInstallTab('android',this)" style="flex:1;padding:9px;border:none;background:#1e1f2e;color:#eeeef5;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;">🤖 Android</button>
+      <button class="install-tab" onclick="setInstallTab('ios',this)" style="flex:1;padding:9px;border:none;background:transparent;color:#6b6d85;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;">🍎 iPhone/iPad</button>
+      <button class="install-tab" onclick="setInstallTab('pc',this)" style="flex:1;padding:9px;border:none;background:transparent;color:#6b6d85;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;">💻 PC/Laptop</button>
+    </div>
+
+    <!-- Android -->
+    <div id="tab-android" class="install-panel">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">1</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Buka di Chrome</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Pastikan kamu membuka halaman ini di browser <strong style="color:#f0a500">Chrome</strong> (bukan browser lain)</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">2</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Tap menu ⋮</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Tap titik tiga <strong style="color:#f0a500">⋮</strong> di pojok kanan atas Chrome</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">3</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Pilih "Tambahkan ke layar utama"</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Atau <strong style="color:#f0a500">"Install app"</strong> jika ada — lalu tap <strong style="color:#f0a500">Tambahkan</strong></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.15);border-radius:10px;padding:13px;">
+          <div style="font-size:20px;flex-shrink:0;">✅</div>
+          <div style="font-size:12px;color:#9294ae;line-height:1.5;">Icon Vault akan muncul di layar beranda. Buka seperti app biasa!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- iOS -->
+    <div id="tab-ios" class="install-panel" style="display:none;">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">1</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Buka di Safari</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Harus pakai <strong style="color:#f0a500">Safari</strong> — Chrome di iOS tidak support install ke beranda</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">2</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Tap ikon Share ↑</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Tap ikon <strong style="color:#f0a500">kotak dengan panah ke atas</strong> di toolbar bawah Safari</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">3</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Pilih "Add to Home Screen"</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Scroll menu Share → tap <strong style="color:#f0a500">"Tambahkan ke Layar Utama"</strong> → tap <strong style="color:#f0a500">Tambahkan</strong></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.15);border-radius:10px;padding:13px;">
+          <div style="font-size:20px;flex-shrink:0;">✅</div>
+          <div style="font-size:12px;color:#9294ae;line-height:1.5;">Icon Vault muncul di Home Screen iPhone/iPad kamu!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PC -->
+    <div id="tab-pc" class="install-panel" style="display:none;">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">1</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Buka di Chrome / Edge</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Pastikan pakai browser <strong style="color:#f0a500">Chrome</strong> atau <strong style="color:#f0a500">Edge</strong></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">2</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Klik ikon install di address bar</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Lihat pojok kanan address bar — ada ikon <strong style="color:#f0a500">💻⊕</strong> atau ikon download. Klik ikon itu.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="width:28px;height:28px;background:#f0a500;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;font-size:13px;flex-shrink:0;">3</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#eeeef5;margin-bottom:3px;">Klik "Install"</div>
+            <div style="font-size:12px;color:#9294ae;line-height:1.5;">Konfirmasi install → Vault akan terbuka seperti app desktop sendiri</div>
+          </div>
+        </div>
+        <div style="background:#0e0f1a;border-radius:10px;padding:13px;">
+          <div style="font-size:12px;color:#9294ae;line-height:1.5;">💡 Atau lewat menu <strong style="color:#f0a500">⋮ → More tools → Create shortcut</strong> → centang "Open as window"</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;padding-top:16px;border-top:1px solid #2b2d42;">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-install')">Tutup</button>
+  </div>
+</div>
+</div>
+
 </body>
 </html>
 <script>
+
+// ════════════════════════════════
+// INSTALL GUIDE
+// ════════════════════════════════
+function openInstallGuide() {
+  document.getElementById('modal-install').classList.add('open');
+  // Show auto-install button if prompt available
+  if (deferredPrompt) {
+    document.getElementById('install-auto').style.display = 'block';
+  }
+  // Auto-detect device
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isAndroid = /android/i.test(navigator.userAgent);
+  if (isIOS) setInstallTabByName('ios');
+  else if (isAndroid) setInstallTabByName('android');
+  else setInstallTabByName('pc');
+}
+
+function setInstallTab(name, btn) {
+  document.querySelectorAll('.install-tab').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = '#6b6d85';
+  });
+  btn.style.background = '#1e1f2e';
+  btn.style.color = '#eeeef5';
+  document.querySelectorAll('.install-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('tab-' + name).style.display = 'block';
+}
+
+function setInstallTabByName(name) {
+  const btn = document.querySelector(`[onclick="setInstallTab('${name}',this)"]`);
+  if (btn) setInstallTab(name, btn);
+}
+
 // ════════════════════════════════
 // PWA — Service Worker + Install Banner
 // ════════════════════════════════
