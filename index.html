@@ -480,6 +480,7 @@ select option{background:var(--s2);}
       <div id="pin-err" style="font-size:12px;color:var(--red);text-align:center;margin-bottom:12px;display:none;min-height:18px;"></div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="showMasterPwFallback()">🔑 Lupa PIN? Gunakan Master Password</button>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="showRecoveryPanel()">🗝️ Recovery (lupa password)</button>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;" onclick="showSetup()">✨ Setup Baru</button>
           <label class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;cursor:pointer;">
@@ -510,31 +511,9 @@ select option{background:var(--s2);}
       </div>
       <button class="btn btn-gold" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="unlockVault()">🔓 Buka Vault</button>
       <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-bottom:8px;" onclick="showPinPanel()">← Kembali ke PIN</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-bottom:8px;" onclick="showRecoveryPanel()">🗝️ Recovery (lupa password)</button>
 
-      <div class="lock-tabs" style="margin-top:8px;">
-        <button class="lock-tab active" onclick="setLockTab('unlock',this)">🔑 Master PW</button>
-        <button class="lock-tab" onclick="setLockTab('recover',this)">🗝️ Recovery</button>
-      </div>
 
-      <!-- Recovery panel (inside master pw panel) -->
-      <div id="panel-recover" style="display:none;margin-top:12px;">
-        <div style="background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(255,150,150,.8);margin-bottom:16px;line-height:1.6;">
-          ⚠️ Recovery akan <strong>mereset master password</strong>. Data tetap aman tapi kamu harus set password baru.
-        </div>
-        <div class="fg">
-          <label class="flbl">5 Recovery Words (pisahkan spasi)</label>
-          <input type="text" id="recovery-input" placeholder="kata1 kata2 kata3 kata4 kata5" style="font-family:var(--mono);">
-        </div>
-        <div class="fg">
-          <label class="flbl">Master Password Baru</label>
-          <div class="pw-wrap">
-            <input type="password" id="recovery-newpw" placeholder="Password baru...">
-            <button class="pwtog" onclick="togglePw('recovery-newpw',this)">👁️</button>
-          </div>
-        </div>
-        <div id="recover-err" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none;"></div>
-        <button class="btn btn-danger" style="width:100%;justify-content:center;" onclick="doRecovery()">🗝️ Reset & Masuk</button>
-      </div>
 
       <div style="display:flex;gap:8px;margin-top:10px;">
         <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;" onclick="showSetup()">✨ Setup Baru</button>
@@ -543,6 +522,32 @@ select option{background:var(--s2);}
           <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
         </label>
       </div>
+    </div>
+
+    <!-- ── PANEL RECOVERY — sibling dari panel-pin & panel-unlock ── -->
+    <div id="panel-recover" style="display:none;">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:32px;margin-bottom:8px;">🗝️</div>
+        <div style="font-size:15px;font-weight:700;color:#eeeef5;">Recovery Phrase</div>
+        <div style="font-size:12px;color:#9294ae;margin-top:4px;">Masukkan 5 kata recovery untuk reset master password</div>
+      </div>
+      <div style="background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(255,150,150,.8);margin-bottom:16px;line-height:1.6;">
+        ⚠️ Recovery akan <strong>mereset master password</strong>. Data vault tetap aman — kamu harus set password baru.
+      </div>
+      <div class="fg">
+        <label class="flbl">5 Recovery Words (pisahkan spasi)</label>
+        <input type="text" id="recovery-input" placeholder="kata1 kata2 kata3 kata4 kata5" style="font-family:var(--mono);letter-spacing:1px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="fg">
+        <label class="flbl">Master Password Baru</label>
+        <div class="pw-wrap">
+          <input type="password" id="recovery-newpw" placeholder="Minimal 12 karakter..." onkeydown="if(event.key==='Enter')doRecovery()">
+          <button class="pwtog" onclick="togglePw('recovery-newpw',this)">👁️</button>
+        </div>
+      </div>
+      <div id="recover-err" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none;"></div>
+      <button class="btn btn-danger" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="doRecovery()">🗝️ Reset & Masuk</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="showPinPanel()">← Kembali ke PIN</button>
     </div>
 
   </div>
@@ -1061,10 +1066,21 @@ function showSetupErr(msg) {
 // LOCK / UNLOCK
 // ════════════════════════════════
 function setLockTab(name, btn) {
-  document.querySelectorAll('.lock-tab').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('panel-unlock').style.display = name==='unlock'?'block':'none';
-  document.getElementById('panel-recover').style.display = name==='recover'?'block':'none';
+  // Legacy function — kept for compatibility
+}
+
+// Tampilkan panel recovery (sibling panel, bukan nested)
+function showRecoveryPanel() {
+  document.getElementById('panel-pin').style.display    = 'none';
+  document.getElementById('panel-unlock').style.display = 'none';
+  document.getElementById('panel-recover').style.display= 'block';
+  // Reset form
+  const ri = document.getElementById('recovery-input');
+  const rp = document.getElementById('recovery-newpw');
+  const re = document.getElementById('recover-err');
+  if (ri) ri.value = '';
+  if (rp) rp.value = '';
+  if (re) re.style.display = 'none';
 }
 async function unlockVault() {
   const pw = document.getElementById('unlock-pw').value.trim();
@@ -1079,7 +1095,8 @@ async function unlockVault() {
       // _metaOnly = vault baru setup, belum ada entry — tidak perlu decrypt
       if (saved._metaOnly) {
         vault = [];
-        vaultMeta = { hint: saved.hint || '' };
+        const metaLS = loadVaultMeta();
+        vaultMeta = metaLS ? { hint: metaLS.hint || '', recoveryHash: metaLS.recoveryHash || '', recovery: metaLS.recovery || '' } : { hint: saved.hint || '' };
         masterPw = pw;
         openVaultAfterAuth();
         return;
@@ -1088,6 +1105,11 @@ async function unlockVault() {
       const data = JSON.parse(dec);
       vault = data.vault || [];
       vaultMeta = data.meta || {};
+      // Fallback: pastikan recovery ada — ambil dari vault_meta LS jika payload lama
+      if (!vaultMeta.recovery) {
+        const metaLS = loadVaultMeta();
+        if (metaLS && metaLS.recovery) vaultMeta.recovery = metaLS.recovery;
+      }
       masterPw = pw;
       // Jika sudah pernah skip PIN atau sudah ada PIN
       if (!hasPin() && !localStorage.getItem('vault_pin_skipped')) {
@@ -1153,13 +1175,44 @@ async function doRecovery() {
   err.style.display = 'none';
   if (!recInput) { err.textContent='Masukkan recovery phrase.'; err.style.display='block'; return; }
   if (!newPw)    { err.textContent='Masukkan password baru.';  err.style.display='block'; return; }
-  if (!vaultMeta.recovery) { err.textContent='Tidak ada vault yang bisa di-recover.'; err.style.display='block'; return; }
-  if (recInput !== vaultMeta.recovery) { err.textContent='Recovery phrase salah.'; err.style.display='block'; return; }
+  if (newPw.length < 12) { err.textContent='Password baru minimal 12 karakter.'; err.style.display='block'; return; }
+
+  // Verifikasi hash recovery dari vault_meta (tersimpan di LS, tidak butuh masterPw)
+  const metaRaw = localStorage.getItem(LS_META);
+  if (!metaRaw) { err.textContent='Tidak ada vault yang bisa di-recover. Impor file .vault terlebih dahulu.'; err.style.display='block'; return; }
+  let storedHash;
+  try {
+    const meta = JSON.parse(metaRaw);
+    storedHash = meta.recoveryHash;
+    if (!storedHash) { err.textContent='Recovery hash tidak ditemukan. Vault mungkin dibuat dengan versi lama.'; err.style.display='block'; return; }
+  } catch(e) { err.textContent='Data vault korup.'; err.style.display='block'; return; }
+
+  // Hash input dan bandingkan
+  const inputHash = await hashStr(recInput);
+  if (inputHash !== storedHash) { err.textContent='Recovery phrase salah. Periksa ejaan dan urutan kata.'; err.style.display='block'; return; }
   masterPw = newPw;
+  // Restore meta dari vault_meta LS (recovery words, hint, hash tetap sama)
+  const metaLS = loadVaultMeta();
+  vaultMeta = {
+    hint: metaLS ? (metaLS.hint || '') : '',
+    recoveryHash: metaLS ? (metaLS.recoveryHash || '') : storedHash,
+    recovery: metaLS ? (metaLS.recovery || recInput) : recInput
+  };
+  // Vault tidak bisa di-decrypt (lupa password lama) — mulai dari kosong
+  vault = [];
+  // Simpan vault baru dengan password baru
+  await saveToLocal();
+  saveVaultMeta();
   // Clear old PIN — force new PIN setup
   localStorage.removeItem(LS_PIN);
-  setupPinAfterVaultCreation();
-  toast('✅ Password berhasil direset! Buat PIN baru.');
+  localStorage.removeItem('vault_pin_skipped');
+  // Buka vault
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  render();
+  if (autoLockMinutes > 0) scheduleAutoLock();
+  toast('✅ Password berhasil direset! Vault kosong — data lama tidak bisa dipulihkan. Buat PIN baru.');
+  setTimeout(() => setupPinAfterVaultCreation(), 2000);
 }
 
 // ════════════════════════════════
@@ -1855,14 +1908,20 @@ async function submitPin() {
     if (saved) {
       try {
         if (saved._metaOnly) {
-          // Vault baru setup, belum ada entry
+          // Vault baru setup, belum ada entry — ambil meta dari vault_meta LS
           vault = [];
-          vaultMeta = { hint: saved.hint || '' };
+          const metaLS = loadVaultMeta();
+          vaultMeta = metaLS ? { hint: metaLS.hint || '', recoveryHash: metaLS.recoveryHash || '', recovery: metaLS.recovery || '' } : { hint: saved.hint || '' };
         } else {
           const dec = await ENC.decrypt(saved.data, masterPw);
           const data = JSON.parse(dec);
           vault = data.vault || [];
           vaultMeta = data.meta || {};
+          // Pastikan recovery ada — fallback ke vault_meta LS jika tidak ada di payload
+          if (!vaultMeta.recovery) {
+            const metaLS = loadVaultMeta();
+            if (metaLS && metaLS.recovery) vaultMeta.recovery = metaLS.recovery;
+          }
         }
       } catch(e) {
         showPinErr('Data vault rusak. Coba master password.');
@@ -1906,8 +1965,9 @@ function hasPin() {
 }
 
 function showPinPanel() {
-  document.getElementById('panel-pin').style.display = 'block';
+  document.getElementById('panel-pin').style.display    = 'block';
   document.getElementById('panel-unlock').style.display = 'none';
+  document.getElementById('panel-recover').style.display= 'none';
   pinBuffer = []; updatePinDots();
   document.getElementById('pin-err').style.display = 'none';
 }
@@ -1915,6 +1975,7 @@ function showPinPanel() {
 function showMasterPwFallback() {
   document.getElementById('panel-pin').style.display = 'none';
   document.getElementById('panel-unlock').style.display = 'block';
+  document.getElementById('panel-recover').style.display = 'none';
   document.getElementById('no-vault-msg').style.display = 'none';
 }
 
@@ -2099,10 +2160,19 @@ function selectEmojiForNew(emoji) {
 }
 
 function showEmergencyBackup() {
-  const recovery = vaultMeta.recovery || '';
-  const hint = vaultMeta.hint || '(tidak ada hint)';
+  // Ambil recovery dari memori, fallback ke vault_meta LS
+  let recovery = vaultMeta.recovery || '';
+  let hint = vaultMeta.hint || '';
   if (!recovery) {
-    toast('⚠️ Recovery phrase tidak ditemukan di sesi ini. Ekspor file .vault terlebih dahulu.');
+    const metaLS = loadVaultMeta();
+    if (metaLS && metaLS.recovery) {
+      recovery = metaLS.recovery;
+      hint = hint || metaLS.hint || '';
+    }
+  }
+  if (!hint) hint = '(tidak ada hint)';
+  if (!recovery) {
+    toast('⚠️ Recovery phrase belum tersimpan. Lakukan Setup Baru atau Impor vault.');
     return;
   }
   closeModal('modal-settings');
@@ -2230,10 +2300,14 @@ ACTIVITY_EVENTS.forEach(ev => {
 // Save vault meta saja (hint, recoveryHash) — disimpan saat setup, survives empty vault
 function saveVaultMeta() {
   try {
+    // Simpan recovery words di vault_meta supaya bisa di-restore setelah lock/unlock
+    // Security note: recovery words tidak bisa membuka vault sendiri tanpa master password baru
+    // Auth recovery tetap pakai hash comparison (bukan plaintext ini)
     localStorage.setItem(LS_META, JSON.stringify({
       format: 'vault2-meta',
       hint: vaultMeta.hint || '',
       recoveryHash: vaultMeta.recoveryHash || '',
+      recovery: vaultMeta.recovery || '',
       savedAt: new Date().toISOString()
     }));
   } catch(e) { console.warn('Meta save failed:', e); }
@@ -2270,6 +2344,16 @@ async function saveToLocalNow() {
 function scheduleAutoSave() {
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => saveToLocal(), 1500); // debounce 1.5s
+}
+
+// Helper: update UI autosave tanpa trigger storage write
+function setAutoSaveUI(enabled) {
+  const slider = document.getElementById('autosave-slider');
+  const knob   = document.getElementById('autosave-knob');
+  const label  = document.getElementById('autosave-label');
+  if (slider) slider.style.background = enabled ? '#f0a500' : '#2b2d42';
+  if (knob)   knob.style.transform    = enabled ? 'translateX(20px)' : 'translateX(0)';
+  if (label)  label.textContent       = enabled ? 'Aktif' : 'Nonaktif';
 }
 
 function toggleAutoSave(enabled) {
