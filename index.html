@@ -526,27 +526,43 @@ select option{background:var(--s2);}
 
     <!-- ── PANEL RECOVERY — sibling dari panel-pin & panel-unlock ── -->
     <div id="panel-recover" style="display:none;">
-      <div style="text-align:center;margin-bottom:16px;">
-        <div style="font-size:32px;margin-bottom:8px;">🗝️</div>
+      <div style="text-align:center;margin-bottom:14px;">
+        <div style="font-size:28px;margin-bottom:6px;">🗝️</div>
         <div style="font-size:15px;font-weight:700;color:#eeeef5;">Recovery Phrase</div>
-        <div style="font-size:12px;color:#9294ae;margin-top:4px;">Masukkan 5 kata recovery untuk reset master password</div>
+        <div style="font-size:12px;color:#9294ae;margin-top:3px;">Gunakan 5 kata recovery untuk masuk atau reset password</div>
       </div>
-      <div style="background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(255,150,150,.8);margin-bottom:16px;line-height:1.6;">
-        ⚠️ Recovery akan <strong>mereset master password</strong>. Data vault tetap aman — kamu harus set password baru.
+
+      <!-- Mode tabs: Login vs Reset -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button id="rec-tab-login" class="btn btn-gold" style="flex:1;justify-content:center;font-size:13px;padding:10px 8px;" onclick="setRecoveryMode('login')">🔓 Masuk Langsung</button>
+        <button id="rec-tab-reset" class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;font-size:13px;" onclick="setRecoveryMode('reset')">🔄 Reset Password</button>
       </div>
+
+      <!-- Info box (berubah sesuai mode) -->
+      <div id="rec-info-login" style="background:rgba(240,165,0,.07);border:1px solid rgba(240,165,0,.2);border-radius:10px;padding:10px 12px;font-size:12px;color:rgba(240,200,80,.9);margin-bottom:14px;line-height:1.6;">
+        ✅ Masukkan 5 kata recovery → vault langsung terbuka dengan data utuh.
+      </div>
+      <div id="rec-info-reset" style="display:none;background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:10px;padding:10px 12px;font-size:12px;color:rgba(255,150,150,.8);margin-bottom:14px;line-height:1.6;">
+        ⚠️ Reset akan <strong>menghapus data vault</strong>. Gunakan ini hanya jika lupa master password.
+      </div>
+
       <div class="fg">
         <label class="flbl">5 Recovery Words (pisahkan spasi)</label>
         <input type="text" id="recovery-input" placeholder="kata1 kata2 kata3 kata4 kata5" style="font-family:var(--mono);letter-spacing:1px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       </div>
-      <div class="fg">
+
+      <!-- Password baru — hanya tampil di mode reset -->
+      <div id="rec-newpw-row" class="fg" style="display:none;">
         <label class="flbl">Master Password Baru</label>
         <div class="pw-wrap">
           <input type="password" id="recovery-newpw" placeholder="Minimal 12 karakter..." onkeydown="if(event.key==='Enter')doRecovery()">
           <button class="pwtog" onclick="togglePw('recovery-newpw',this)">👁️</button>
         </div>
       </div>
+
       <div id="recover-err" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none;"></div>
-      <button class="btn btn-danger" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="doRecovery()">🗝️ Reset & Masuk</button>
+
+      <button id="rec-btn-action" class="btn btn-gold" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="doRecovery()">🔓 Buka Vault</button>
       <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="showPinPanel()">← Kembali ke PIN</button>
     </div>
 
@@ -1049,7 +1065,9 @@ async function finishSetup() {
   // Hash recovery for verification
   const recStr = currentRecovery.join(' ');
   const recHash = await hashStr(recStr);
-  vaultMeta = { hint, recoveryHash: recHash, recovery: recStr };
+  // Enkripsi master password dengan seed phrase — untuk login via seed phrase
+  const encMasterBySeed = await ENC.encrypt(pw, recStr);
+  vaultMeta = { hint, recoveryHash: recHash, recovery: recStr, encMasterBySeed };
   masterPw = pw;
   vault = [];
   saveVaultMeta(); // Tandai vault sudah ada — supaya reload setelah update tidak minta setup ulang
@@ -1069,6 +1087,36 @@ function setLockTab(name, btn) {
   // Legacy function — kept for compatibility
 }
 
+// Set mode recovery: 'login' atau 'reset'
+function setRecoveryMode(mode) {
+  const isLogin = mode === 'login';
+  document.getElementById('rec-tab-login').className  = isLogin ? 'btn btn-gold' : 'btn btn-ghost btn-sm';
+  document.getElementById('rec-tab-login').style.flex  = '1';
+  document.getElementById('rec-tab-login').style.justifyContent = 'center';
+  document.getElementById('rec-tab-login').style.fontSize = '13px';
+  document.getElementById('rec-tab-reset').className  = isLogin ? 'btn btn-ghost btn-sm' : 'btn btn-danger';
+  document.getElementById('rec-tab-reset').style.flex  = '1';
+  document.getElementById('rec-tab-reset').style.justifyContent = 'center';
+  document.getElementById('rec-tab-reset').style.fontSize = '13px';
+  document.getElementById('rec-info-login').style.display = isLogin ? 'block' : 'none';
+  document.getElementById('rec-info-reset').style.display = isLogin ? 'none'  : 'block';
+  document.getElementById('rec-newpw-row').style.display  = isLogin ? 'none'  : 'block';
+  const btn = document.getElementById('rec-btn-action');
+  if (isLogin) {
+    btn.textContent = '🔓 Buka Vault';
+    btn.className = 'btn btn-gold';
+  } else {
+    btn.textContent = '🔄 Reset & Masuk (Data Terhapus)';
+    btn.className = 'btn btn-danger';
+  }
+  btn.style.width = '100%';
+  btn.style.justifyContent = 'center';
+  btn.style.marginBottom = '10px';
+  // Store mode
+  btn.dataset.mode = mode;
+  document.getElementById('recover-err').style.display = 'none';
+}
+
 // Tampilkan panel recovery (sibling panel, bukan nested)
 function showRecoveryPanel() {
   document.getElementById('panel-pin').style.display    = 'none';
@@ -1081,6 +1129,8 @@ function showRecoveryPanel() {
   if (ri) ri.value = '';
   if (rp) rp.value = '';
   if (re) re.style.display = 'none';
+  // Default mode: login
+  setRecoveryMode('login');
 }
 async function unlockVault() {
   const pw = document.getElementById('unlock-pw').value.trim();
@@ -1096,7 +1146,7 @@ async function unlockVault() {
       if (saved._metaOnly) {
         vault = [];
         const metaLS = loadVaultMeta();
-        vaultMeta = metaLS ? { hint: metaLS.hint || '', recoveryHash: metaLS.recoveryHash || '', recovery: metaLS.recovery || '' } : { hint: saved.hint || '' };
+        vaultMeta = metaLS ? { hint: metaLS.hint || '', recoveryHash: metaLS.recoveryHash || '', recovery: metaLS.recovery || '', encMasterBySeed: metaLS.encMasterBySeed || '' } : { hint: saved.hint || '' };
         masterPw = pw;
         openVaultAfterAuth();
         return;
@@ -1105,6 +1155,11 @@ async function unlockVault() {
       const data = JSON.parse(dec);
       vault = data.vault || [];
       vaultMeta = data.meta || {};
+          // Fallback: pastikan encMasterBySeed ada dari vault_meta LS
+          if (!vaultMeta.encMasterBySeed) {
+            const _mls = loadVaultMeta();
+            if (_mls && _mls.encMasterBySeed) vaultMeta.encMasterBySeed = _mls.encMasterBySeed;
+          }
       // Fallback: pastikan recovery ada — ambil dari vault_meta LS jika payload lama
       if (!vaultMeta.recovery) {
         const metaLS = loadVaultMeta();
@@ -1170,48 +1225,118 @@ function lockApp() {
 }
 async function doRecovery() {
   const recInput = document.getElementById('recovery-input').value.trim().toLowerCase();
-  const newPw    = document.getElementById('recovery-newpw').value;
   const err      = document.getElementById('recover-err');
+  const btn      = document.getElementById('rec-btn-action');
+  const mode     = btn ? btn.dataset.mode || 'login' : 'login';
   err.style.display = 'none';
-  if (!recInput) { err.textContent='Masukkan recovery phrase.'; err.style.display='block'; return; }
-  if (!newPw)    { err.textContent='Masukkan password baru.';  err.style.display='block'; return; }
-  if (newPw.length < 12) { err.textContent='Password baru minimal 12 karakter.'; err.style.display='block'; return; }
 
-  // Verifikasi hash recovery dari vault_meta (tersimpan di LS, tidak butuh masterPw)
+  if (!recInput) { err.textContent='Masukkan 5 kata recovery.'; err.style.display='block'; return; }
+
+  // ── Verifikasi hash dari vault_meta LS (tidak butuh masterPw aktif) ──
   const metaRaw = localStorage.getItem(LS_META);
-  if (!metaRaw) { err.textContent='Tidak ada vault yang bisa di-recover. Impor file .vault terlebih dahulu.'; err.style.display='block'; return; }
-  let storedHash;
+  if (!metaRaw) {
+    err.textContent='Tidak ada vault ditemukan. Impor file .vault atau setup baru.';
+    err.style.display='block'; return;
+  }
+  let meta;
   try {
-    const meta = JSON.parse(metaRaw);
-    storedHash = meta.recoveryHash;
-    if (!storedHash) { err.textContent='Recovery hash tidak ditemukan. Vault mungkin dibuat dengan versi lama.'; err.style.display='block'; return; }
+    meta = JSON.parse(metaRaw);
+    if (!meta.recoveryHash) {
+      err.textContent='Recovery hash tidak ada. Vault ini dibuat dengan versi lama — gunakan master password.';
+      err.style.display='block'; return;
+    }
   } catch(e) { err.textContent='Data vault korup.'; err.style.display='block'; return; }
 
-  // Hash input dan bandingkan
   const inputHash = await hashStr(recInput);
-  if (inputHash !== storedHash) { err.textContent='Recovery phrase salah. Periksa ejaan dan urutan kata.'; err.style.display='block'; return; }
+  if (inputHash !== meta.recoveryHash) {
+    err.textContent='Recovery phrase salah. Periksa ejaan dan urutan kata (pisahkan dengan spasi).';
+    err.style.display='block'; return;
+  }
+
+  // ══════════════════════════════════════
+  // MODE LOGIN: buka vault dengan data utuh
+  // ══════════════════════════════════════
+  if (mode === 'login') {
+    // Coba decrypt encMasterBySeed — tersimpan saat setup
+    const encMBS = meta.encMasterBySeed || vaultMeta.encMasterBySeed || '';
+    if (!encMBS) {
+      // Vault lama — belum ada encMasterBySeed
+      err.textContent='Vault ini dibuat sebelum fitur login seed phrase tersedia. Gunakan Master Password untuk masuk, lalu vault akan otomatis mendukung login seed phrase.';
+      err.style.display='block'; return;
+    }
+    let recoveredMasterPw;
+    try {
+      recoveredMasterPw = await ENC.decrypt(encMBS, recInput);
+    } catch(e) {
+      err.textContent='Gagal mendekripsi — seed phrase tidak cocok dengan vault ini.';
+      err.style.display='block'; return;
+    }
+    // Decrypt vault_data dengan master password yang sudah di-recover
+    const saved = await loadFromLocal();
+    if (!saved) {
+      err.textContent='Tidak ada data vault tersimpan.'; err.style.display='block'; return;
+    }
+    try {
+      masterPw = recoveredMasterPw;
+      if (saved._metaOnly) {
+        vault = [];
+        vaultMeta = {
+          hint: meta.hint || '',
+          recoveryHash: meta.recoveryHash,
+          recovery: meta.recovery || recInput,
+          encMasterBySeed: meta.encMasterBySeed || ''
+        };
+      } else {
+        const dec = await ENC.decrypt(saved.data, masterPw);
+        const data = JSON.parse(dec);
+        vault = data.vault || [];
+        vaultMeta = data.meta || {};
+        // Pastikan encMasterBySeed ada
+        if (!vaultMeta.encMasterBySeed && meta.encMasterBySeed) {
+          vaultMeta.encMasterBySeed = meta.encMasterBySeed;
+        }
+      }
+    } catch(e) {
+      masterPw = '';
+      err.textContent='Gagal membuka vault — data mungkin rusak atau password tidak cocok.';
+      err.style.display='block'; return;
+    }
+    // Buka vault
+    document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    render();
+    if (autoLockMinutes > 0) scheduleAutoLock();
+    toast('✅ Vault dibuka via Recovery Phrase!');
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // MODE RESET: hapus vault, set password baru
+  // ══════════════════════════════════════
+  const newPw = document.getElementById('recovery-newpw').value;
+  if (!newPw)          { err.textContent='Masukkan master password baru.'; err.style.display='block'; return; }
+  if (newPw.length < 12) { err.textContent='Password baru minimal 12 karakter.'; err.style.display='block'; return; }
+
   masterPw = newPw;
-  // Restore meta dari vault_meta LS (recovery words, hint, hash tetap sama)
+  // Buat encMasterBySeed baru dengan password baru
+  const newEncMBS = await ENC.encrypt(newPw, recInput);
   const metaLS = loadVaultMeta();
   vaultMeta = {
     hint: metaLS ? (metaLS.hint || '') : '',
-    recoveryHash: metaLS ? (metaLS.recoveryHash || '') : storedHash,
-    recovery: metaLS ? (metaLS.recovery || recInput) : recInput
+    recoveryHash: meta.recoveryHash,
+    recovery: meta.recovery || recInput,
+    encMasterBySeed: newEncMBS
   };
-  // Vault tidak bisa di-decrypt (lupa password lama) — mulai dari kosong
   vault = [];
-  // Simpan vault baru dengan password baru
   await saveToLocal();
   saveVaultMeta();
-  // Clear old PIN — force new PIN setup
   localStorage.removeItem(LS_PIN);
   localStorage.removeItem('vault_pin_skipped');
-  // Buka vault
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   render();
   if (autoLockMinutes > 0) scheduleAutoLock();
-  toast('✅ Password berhasil direset! Vault kosong — data lama tidak bisa dipulihkan. Buat PIN baru.');
+  toast('⚠️ Password direset. Vault kosong — data lama tidak bisa dipulihkan. Buat PIN baru.');
   setTimeout(() => setupPinAfterVaultCreation(), 2000);
 }
 
@@ -1911,12 +2036,17 @@ async function submitPin() {
           // Vault baru setup, belum ada entry — ambil meta dari vault_meta LS
           vault = [];
           const metaLS = loadVaultMeta();
-          vaultMeta = metaLS ? { hint: metaLS.hint || '', recoveryHash: metaLS.recoveryHash || '', recovery: metaLS.recovery || '' } : { hint: saved.hint || '' };
+          vaultMeta = metaLS ? { hint: metaLS.hint || '', recoveryHash: metaLS.recoveryHash || '', recovery: metaLS.recovery || '', encMasterBySeed: metaLS.encMasterBySeed || '' } : { hint: saved.hint || '' };
         } else {
           const dec = await ENC.decrypt(saved.data, masterPw);
           const data = JSON.parse(dec);
           vault = data.vault || [];
           vaultMeta = data.meta || {};
+          // Fallback: pastikan encMasterBySeed ada dari vault_meta LS
+          if (!vaultMeta.encMasterBySeed) {
+            const _mls = loadVaultMeta();
+            if (_mls && _mls.encMasterBySeed) vaultMeta.encMasterBySeed = _mls.encMasterBySeed;
+          }
           // Pastikan recovery ada — fallback ke vault_meta LS jika tidak ada di payload
           if (!vaultMeta.recovery) {
             const metaLS = loadVaultMeta();
@@ -1984,6 +2114,15 @@ function openVaultAfterAuth() {
   document.getElementById('main-app').style.display = 'block';
   render();
   if (autoLockMinutes > 0) scheduleAutoLock();
+  // Generate encMasterBySeed jika belum ada (vault lama / upgrade otomatis)
+  if (masterPw && vaultMeta.recovery && !vaultMeta.encMasterBySeed) {
+    ENC.encrypt(masterPw, vaultMeta.recovery).then(enc => {
+      vaultMeta.encMasterBySeed = enc;
+      saveVaultMeta();
+      if (autoSaveEnabled) saveToLocal();
+      console.log('[Vault] encMasterBySeed generated — login via seed phrase sekarang aktif');
+    }).catch(() => {});
+  }
 }
 
 
@@ -2308,6 +2447,7 @@ function saveVaultMeta() {
       hint: vaultMeta.hint || '',
       recoveryHash: vaultMeta.recoveryHash || '',
       recovery: vaultMeta.recovery || '',
+      encMasterBySeed: vaultMeta.encMasterBySeed || '',
       savedAt: new Date().toISOString()
     }));
   } catch(e) { console.warn('Meta save failed:', e); }
@@ -2327,7 +2467,7 @@ async function saveToLocal() {
   // Save bahkan kalau vault kosong (supaya meta tersimpan)
   if (!autoSaveEnabled || !masterPw) return;
   try {
-    const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery } });
+    const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery, encMasterBySeed: vaultMeta.encMasterBySeed || '' } });
     const encrypted = await ENC.encrypt(payload, masterPw);
     const saveData = JSON.stringify({ format: 'vault2', hint: vaultMeta.hint || '', data: encrypted, savedAt: new Date().toISOString(), count: vault.length });
     localStorage.setItem(LS_KEY, saveData);
