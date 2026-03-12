@@ -1047,6 +1047,7 @@ async function finishSetup() {
   vaultMeta = { hint, recoveryHash: recHash, recovery: recStr };
   masterPw = pw;
   vault = [];
+  saveVaultMeta(); // Tandai vault sudah ada — supaya reload setelah update tidak minta setup ulang
   document.getElementById('setup-screen').style.display = 'none';
   // Ask for PIN setup
   setupPinAfterVaultCreation();
@@ -1075,6 +1076,14 @@ async function unlockVault() {
   const saved = await loadFromLocal();
   if (saved) {
     try {
+      // _metaOnly = vault baru setup, belum ada entry — tidak perlu decrypt
+      if (saved._metaOnly) {
+        vault = [];
+        vaultMeta = { hint: saved.hint || '' };
+        masterPw = pw;
+        openVaultAfterAuth();
+        return;
+      }
       const dec = await ENC.decrypt(saved.data, pw);
       const data = JSON.parse(dec);
       vault = data.vault || [];
@@ -1114,7 +1123,18 @@ function lockApp() {
   document.getElementById('unlock-err').style.display = 'none';
   document.getElementById('no-vault-msg').style.display = 'none'; // Fix: hide this on lock
   expandedIds.clear(); pwVisible.clear(); seedVisible.clear();
-  // Security: clear sensitive data from memory on lock
+  // Security: simpan ke LS dulu, baru clear memori
+  if (autoSaveEnabled && masterPw && vault.length > 0) {
+    // Simpan sinkron-ish sebelum clear (fire and forget)
+    saveToLocal();
+  } else if (autoSaveEnabled && masterPw) {
+    // vault kosong tapi meta ada — simpan marker
+    try {
+      const marker = localStorage.getItem(LS_KEY);
+      const parsed = marker ? JSON.parse(marker) : null;
+      if (parsed && parsed._metaOnly) { /* already saved */ }
+    } catch(e) {}
+  }
   vault = [];
   masterPw = '';
   // Show PIN panel if PIN exists, else master pw
@@ -1812,10 +1832,16 @@ async function submitPin() {
     const saved = await loadFromLocal();
     if (saved) {
       try {
-        const dec = await ENC.decrypt(saved.data, masterPw);
-        const data = JSON.parse(dec);
-        vault = data.vault || [];
-        vaultMeta = data.meta || {};
+        if (saved._metaOnly) {
+          // Vault baru setup, belum ada entry
+          vault = [];
+          vaultMeta = { hint: saved.hint || '' };
+        } else {
+          const dec = await ENC.decrypt(saved.data, masterPw);
+          const data = JSON.parse(dec);
+          vault = data.vault || [];
+          vaultMeta = data.meta || {};
+        }
       } catch(e) {
         showPinErr('Data vault rusak. Coba master password.');
         return;
@@ -2146,13 +2172,37 @@ ACTIVITY_EVENTS.forEach(ev => {
 // AUTO-SAVE LOCALSTORAGE
 // ════════════════════════════════
 
+// Save vault meta saja (hint, recoveryHash) — disimpan saat setup, survives empty vault
+function saveVaultMeta() {
+  try {
+    localStorage.setItem(LS_META, JSON.stringify({
+      format: 'vault2-meta',
+      hint: vaultMeta.hint || '',
+      recoveryHash: vaultMeta.recoveryHash || '',
+      savedAt: new Date().toISOString()
+    }));
+  } catch(e) { console.warn('Meta save failed:', e); }
+}
+
+function loadVaultMeta() {
+  try {
+    const raw = localStorage.getItem(LS_META);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed.format || !parsed.format.startsWith('vault2')) return null;
+    return parsed;
+  } catch(e) { return null; }
+}
+
 async function saveToLocal() {
-  if (!autoSaveEnabled || !masterPw || vault.length === 0) return;
+  // Save bahkan kalau vault kosong (supaya meta tersimpan)
+  if (!autoSaveEnabled || !masterPw) return;
   try {
     const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery } });
     const encrypted = await ENC.encrypt(payload, masterPw);
     const saveData = JSON.stringify({ format: 'vault2', hint: vaultMeta.hint || '', data: encrypted, savedAt: new Date().toISOString(), count: vault.length });
     localStorage.setItem(LS_KEY, saveData);
+    saveVaultMeta(); // keep meta key in sync
     updateSaveInfo();
   } catch(e) { console.warn('Auto-save failed:', e); }
 }
@@ -2207,10 +2257,14 @@ function clearLocalData() {
 async function loadFromLocal() {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    if (parsed.format !== 'vault2') return false;
-    return parsed; // return raw parsed, password will be asked at unlock
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.format === 'vault2') return parsed;
+    }
+    // Fallback: cek vault_meta — vault sudah setup tapi belum punya entry (atau vault_data belum tersimpan)
+    const meta = loadVaultMeta();
+    if (meta) return { format: 'vault2', hint: meta.hint || '', data: null, count: 0, _metaOnly: true };
+    return false;
   } catch(e) { return false; }
 }
 
@@ -2319,7 +2373,10 @@ if('serviceWorker' in navigator){
     };
   });
   navigator.serviceWorker.addEventListener('message',e=>{
-    if(e.data&&e.data.type==='SW_UPDATED') location.reload();
+    if(e.data&&e.data.type==='SW_UPDATED') {
+      // Jangan hard reload — bisa interrupt setup atau hapus state dari memory
+      toast('🔄 Vault diperbarui di background. Refresh manual jika diperlukan.');
+    }
   });
 }
 
