@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vault v2 — Pencatat Akun Terenkripsi</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f0a500">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vault">
+<link rel="apple-touch-icon" href="icons/icon-152x152.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192x192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
+
+<!-- SEO / Description -->
+<meta name="description" content="Pencatat akun dan password terenkripsi AES-256. Sepenuhnya offline.">
+
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root {
+  --bg: #07080f;
+  --s1: #0e0f1a;
+  --s2: #161724;
+  --s3: #1e1f2e;
+  --border: #2b2d42;
+  --border2: #3a3d56;
+  --gold: #f0a500;
+  --gold2: #ffcc44;
+  --teal: #00d4aa;
+  --red: #ff4d6d;
+  --blue: #4d8eff;
+  --text: #eeeef5;
+  --muted: #6b6d85;
+  --muted2: #9294ae;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Outfit', sans-serif;
+  --crypto: #f7931a;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 10%, rgba(240,165,0,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 30% at 80% 90%, rgba(0,212,170,0.04) 0%, transparent 60%);
+  pointer-events:none;z-index:0;
+}
+
+/* ── LOCK SCREEN ── */
+#lock-screen{
+  position:fixed;inset:0;
+  background:var(--bg);
+  z-index:999;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:24px;
+}
+.lock-logo{
+  width:72px;height:72px;
+  background:linear-gradient(135deg,#f0a500,#ffcc44);
+  border-radius:20px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:34px;margin-bottom:24px;
+  box-shadow:0 0 40px rgba(240,165,0,0.3);
+}
+.lock-title{font-size:28px;font-weight:800;margin-bottom:6px;}
+.lock-subtitle{font-size:13px;color:var(--muted2);margin-bottom:40px;text-align:center;}
+.lock-box{
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:32px;
+  width:100%;max-width:400px;
+}
+.lock-tabs{
+  display:flex;gap:6px;
+  background:var(--bg);
+  border-radius:10px;padding:4px;
+  margin-bottom:28px;
+}
+.lock-tab{
+  flex:1;padding:8px;border:none;
+  background:transparent;color:var(--muted2);
+  font-family:var(--sans);font-size:13px;font-weight:600;
+  border-radius:8px;cursor:pointer;transition:all 0.2s;
+}
+.lock-tab.active{background:var(--s3);color:var(--text);}
+
+/* ── SETUP SCREEN ── */
+#setup-screen{
+  position:fixed;inset:0;
+  background:var(--bg);z-index:998;
+  display:none;
+  overflow-y:auto;
+  padding:40px 20px;
+}
+.setup-wrap{max-width:480px;margin:0 auto;}
+.setup-step{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:16px;padding:28px;margin-bottom:16px;
+}
+.step-num{
+  width:28px;height:28px;background:var(--gold);
+  color:#000;font-weight:700;font-size:13px;
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  margin-bottom:14px;
+}
+.step-title{font-size:16px;font-weight:700;margin-bottom:6px;}
+.step-desc{font-size:12px;color:var(--muted2);margin-bottom:16px;line-height:1.6;}
+
+.recovery-grid{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
+  margin-bottom:16px;
+}
+.rec-word{
+  background:var(--s3);border:1px solid var(--border2);
+  border-radius:8px;padding:8px 6px;text-align:center;
+}
+.rec-word span{display:block;font-size:9px;color:var(--muted);margin-bottom:3px;}
+.rec-word strong{font-family:var(--mono);font-size:12px;color:var(--gold2);}
+
+/* ── MAIN APP ── */
+#main-app{display:none;position:relative;z-index:1;}
+.app{max-width:920px;margin:0 auto;padding:28px 18px 80px;}
+
+/* Header */
+.header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:32px;flex-wrap:wrap;gap:12px;
+}
+.logo{display:flex;align-items:center;gap:12px;}
+.logo-icon{
+  width:40px;height:40px;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;
+}
+.logo-name{font-size:20px;font-weight:800;}
+.logo-name span{color:var(--gold);}
+.logo-ver{
+  font-family:var(--mono);font-size:10px;
+  color:var(--muted);border:1px solid var(--border);
+  padding:2px 7px;border-radius:4px;margin-left:6px;
+}
+.header-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+/* Stats */
+.stats{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;}
+.stat{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:12px;padding:14px 18px;flex:1;min-width:100px;
+}
+.stat-n{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--gold);}
+.stat-l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+
+/* Toolbar */
+.toolbar{display:flex;gap:8px;margin-bottom:18px;}
+.search-wrap{flex:1;position:relative;}
+.si{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;}
+
+/* Inputs */
+input,select,textarea{
+  width:100%;
+  background:var(--s1);border:1px solid var(--border);
+  color:var(--text);border-radius:10px;
+  padding:11px 13px;
+  font-family:var(--sans);font-size:14px;outline:none;
+  transition:border-color .2s;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);}
+.search-input{padding-left:40px;}
+select option{background:var(--s2);}
+
+/* Buttons */
+.btn{
+  padding:11px 18px;border-radius:10px;border:none;
+  cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:600;
+  transition:all .2s;display:flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#000;}
+.btn-gold:hover{opacity:.85;transform:translateY(-1px);}
+.btn-ghost{background:var(--s1);color:var(--muted2);border:1px solid var(--border);}
+.btn-ghost:hover{border-color:var(--gold);color:var(--text);}
+.btn-teal{background:rgba(0,212,170,.1);color:var(--teal);border:1px solid rgba(0,212,170,.25);}
+.btn-teal:hover{background:rgba(0,212,170,.18);}
+.btn-danger{background:rgba(255,77,109,.1);color:var(--red);border:1px solid rgba(255,77,109,.25);}
+.btn-danger:hover{background:rgba(255,77,109,.2);}
+.btn-sm{padding:7px 13px;font-size:12px;}
+
+/* Filters */
+.filter-bar{display:flex;gap:7px;margin-bottom:18px;flex-wrap:wrap;}
+.flt{
+  padding:6px 13px;border-radius:20px;
+  border:1px solid var(--border);background:transparent;
+  color:var(--muted2);font-family:var(--sans);font-size:12px;
+  cursor:pointer;transition:all .2s;
+}
+.flt.on{background:var(--gold);color:#000;border-color:var(--gold);}
+.flt:hover:not(.on){border-color:var(--gold);color:var(--text);}
+
+/* Cards */
+.cards{display:grid;gap:10px;}
+.card{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:14px;padding:16px 18px;
+  display:grid;grid-template-columns:42px 1fr auto;
+  gap:12px;align-items:center;
+  transition:all .2s;
+  animation:fadeUp .25s ease;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.card:hover{border-color:var(--gold);background:var(--s2);transform:translateY(-1px);box-shadow:0 6px 20px rgba(240,165,0,.08);}
+.card.crypto-card{border-left:3px solid var(--crypto);}
+
+.avatar{
+  width:42px;height:42px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.av-sosmed{background:rgba(77,142,255,.12);}
+.av-email{background:rgba(255,77,109,.12);}
+.av-bank{background:rgba(0,212,170,.12);}
+.av-game{background:rgba(243,156,18,.12);}
+.av-crypto{background:rgba(247,147,26,.12);}
+.av-lainnya{background:rgba(150,150,200,.12);}
+
+.card-info{min-width:0;}
+.card-name{
+  font-weight:700;font-size:14px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:flex;align-items:center;gap:6px;
+}
+.card-sub{
+  font-family:var(--mono);font-size:11px;color:var(--muted2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;
+}
+.chip{
+  font-size:9px;padding:2px 7px;border-radius:20px;
+  font-family:var(--mono);font-weight:600;flex-shrink:0;
+}
+.chip-sosmed{background:rgba(77,142,255,.15);color:#4d8eff;}
+.chip-email{background:rgba(255,77,109,.15);color:#ff4d6d;}
+.chip-bank{background:rgba(0,212,170,.15);color:#00d4aa;}
+.chip-game{background:rgba(243,156,18,.15);color:#f39c12;}
+.chip-crypto{background:rgba(247,147,26,.15);color:#f7931a;}
+.chip-lainnya{background:rgba(150,150,200,.15);color:#9294ae;}
+
+.card-btns{display:flex;gap:5px;flex-shrink:0;}
+.ibtn{
+  width:32px;height:32px;border-radius:8px;
+  border:1px solid var(--border);background:transparent;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:14px;color:var(--muted);transition:all .2s;
+}
+.ibtn:hover{border-color:var(--gold);color:var(--text);background:var(--s2);}
+.ibtn.del:hover{border-color:var(--red);color:var(--red);}
+
+/* Expanded */
+.exp{
+  grid-column:1/-1;border-top:1px solid var(--border);
+  padding-top:14px;margin-top:4px;
+  display:none;flex-direction:column;gap:10px;
+}
+.exp.open{display:flex;}
+.frow{display:flex;align-items:flex-start;gap:10px;}
+.flabel{
+  font-size:10px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.5px;width:76px;flex-shrink:0;padding-top:1px;
+}
+.fval{
+  font-family:var(--mono);font-size:12px;
+  color:var(--text);flex:1;word-break:break-all;line-height:1.5;
+}
+.fval.dot{letter-spacing:4px;color:var(--muted);}
+
+/* Seed grid */
+.seed-grid{
+  display:grid;gap:6px;flex:1;
+}
+.seed-grid.g12{grid-template-columns:repeat(4,1fr);}
+.seed-grid.g24{grid-template-columns:repeat(4,1fr);}
+.seed-word{
+  background:var(--s3);border:1px solid var(--border);
+  border-radius:7px;padding:6px 8px;
+}
+.seed-word span{display:block;font-size:9px;color:var(--muted);margin-bottom:2px;}
+.seed-word strong{font-family:var(--mono);font-size:11px;color:var(--gold2);}
+.seed-list{flex:1;}
+.seed-list-item{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 0;border-bottom:1px solid var(--border);
+}
+.seed-list-item:last-child{border:none;}
+.seed-num{font-family:var(--mono);font-size:10px;color:var(--muted);width:22px;}
+.seed-val{font-family:var(--mono);font-size:12px;color:var(--gold2);}
+
+/* ── MODAL ── */
+.overlay{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(8px);
+  z-index:200;display:flex;align-items:center;justify-content:center;
+  padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:20px;padding:28px;
+  width:100%;max-width:500px;
+  max-height:90vh;overflow-y:auto;
+  transform:translateY(16px);transition:transform .2s;
+}
+.overlay.open .modal{transform:none;}
+.modal-title{font-size:18px;font-weight:800;margin-bottom:22px;display:flex;align-items:center;gap:8px;}
+.fg{margin-bottom:14px;}
+.flbl{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.pw-wrap{position:relative;}
+.pw-wrap input{padding-right:42px;}
+.pwtog{position:absolute;right:11px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;}
+.pwtog:hover{color:var(--text);}
+.str-bar{height:3px;border-radius:2px;background:var(--border);margin-top:5px;overflow:hidden;}
+.str-fill{height:100%;border-radius:2px;transition:width .3s,background .3s;}
+.modal-actions{display:flex;gap:8px;margin-top:20px;}
+
+/* Seed phrase input area */
+.seed-inputs{display:grid;gap:7px;margin-top:10px;}
+.seed-inputs.s12{grid-template-columns:repeat(3,1fr);}
+.seed-inputs.s24{grid-template-columns:repeat(4,1fr);}
+.seed-inp-wrap{position:relative;}
+.seed-inp-num{
+  position:absolute;left:8px;top:50%;transform:translateY(-50%);
+  font-size:9px;color:var(--muted);font-family:var(--mono);pointer-events:none;
+}
+.seed-inp-wrap input{padding-left:24px;padding-top:8px;padding-bottom:8px;font-size:12px;font-family:var(--mono);}
+
+/* ── SYNC MODAL ── */
+.sync-tabs{display:flex;gap:6px;background:var(--bg);border-radius:10px;padding:4px;margin-bottom:22px;}
+.sync-tab{flex:1;padding:9px;border:none;background:transparent;color:var(--muted2);font-family:var(--sans);font-size:13px;font-weight:600;border-radius:8px;cursor:pointer;transition:all .2s;}
+.sync-tab.on{background:var(--s3);color:var(--text);}
+.sync-panel{display:none;}
+.sync-panel.on{display:block;}
+#qr-container{
+  display:flex;flex-direction:column;align-items:center;
+  gap:14px;padding:20px 0;
+}
+#qr-canvas{
+  background:white;padding:16px;border-radius:12px;
+}
+.enc-text-area{
+  font-family:var(--mono);font-size:11px;
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:10px;padding:14px;width:100%;
+  color:var(--teal);line-height:1.6;
+  word-break:break-all;max-height:160px;overflow-y:auto;
+  white-space:pre-wrap;
+}
+.import-text-area{
+  font-family:var(--mono);font-size:11px;
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:10px;padding:14px;width:100%;
+  color:var(--text);min-height:100px;resize:vertical;
+}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:60px 20px;color:var(--muted);}
+.empty-ico{font-size:44px;margin-bottom:14px;}
+.empty-t{font-size:17px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.empty-d{font-size:13px;line-height:1.6;}
+
+/* Notice */
+.notice{
+  background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.18);
+  border-radius:10px;padding:11px 15px;
+  font-size:12px;color:rgba(0,212,170,.8);
+  margin-bottom:22px;display:flex;gap:8px;align-items:flex-start;line-height:1.5;
+}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:var(--s3);border:1px solid var(--border2);
+  border-radius:10px;padding:10px 20px;
+  font-size:13px;font-weight:600;
+  opacity:0;transition:all .3s;z-index:999;
+  pointer-events:none;white-space:nowrap;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+@media(max-width:480px){
+  .card{grid-template-columns:38px 1fr;}
+  .card-btns{grid-column:1/-1;justify-content:flex-end;}
+  .seed-grid.g12,.seed-grid.g24{grid-template-columns:repeat(3,1fr);}
+  .seed-inputs.s24{grid-template-columns:repeat(3,1fr);}
+}
+</style>
+</head>
+<body>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════
+     LOCK SCREEN
+══════════════════════════════════════ -->
+<div id="lock-screen">
+  <div class="lock-logo">🔐</div>
+  <div class="lock-title">Vault <span style="color:var(--gold)">v2</span></div>
+  <div class="lock-subtitle">Pencatat akun terenkripsi · Sepenuhnya offline</div>
+
+  <div class="lock-box">
+    <div class="lock-tabs">
+      <button class="lock-tab active" onclick="setLockTab('unlock',this)">🔓 Buka Vault</button>
+      <button class="lock-tab" onclick="setLockTab('recover',this)">🗝️ Recovery</button>
+    </div>
+
+    <!-- Unlock panel -->
+    <div id="panel-unlock">
+      <div id="no-vault-msg" style="display:none;margin-bottom:16px;">
+        <div style="background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--gold2);line-height:1.6;">
+          ⚠️ Belum ada vault. Klik <strong>Setup Vault Baru</strong> untuk memulai, atau impor file backup yang ada.
+        </div>
+      </div>
+      <div class="fg">
+        <label class="flbl">Master Password</label>
+        <div class="pw-wrap">
+          <input type="password" id="unlock-pw" placeholder="Masukkan master password..." onkeydown="if(event.key==='Enter')unlockVault()">
+          <button class="pwtog" onclick="togglePw('unlock-pw',this)">👁️</button>
+        </div>
+        <div id="unlock-err" style="font-size:12px;color:var(--red);margin-top:6px;display:none;"></div>
+      </div>
+      <button class="btn btn-gold" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="unlockVault()">🔓 Buka Vault</button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="showSetup()">✨ Setup Vault Baru</button>
+      <label class="btn btn-ghost" style="width:100%;justify-content:center;cursor:pointer;">
+        📤 Impor File Vault
+        <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
+      </label>
+    </div>
+
+    <!-- Recovery panel -->
+    <div id="panel-recover" style="display:none;">
+      <div style="background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(255,150,150,.8);margin-bottom:16px;line-height:1.6;">
+        ⚠️ Recovery akan <strong>mereset master password</strong>. Data tetap aman tapi kamu harus set password baru.
+      </div>
+      <div class="fg">
+        <label class="flbl">5 Recovery Words (pisahkan spasi)</label>
+        <input type="text" id="recovery-input" placeholder="kata1 kata2 kata3 kata4 kata5" style="font-family:var(--mono);">
+      </div>
+      <div class="fg">
+        <label class="flbl">Master Password Baru</label>
+        <div class="pw-wrap">
+          <input type="password" id="recovery-newpw" placeholder="Password baru...">
+          <button class="pwtog" onclick="togglePw('recovery-newpw',this)">👁️</button>
+        </div>
+      </div>
+      <div id="recover-err" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none;"></div>
+      <button class="btn btn-danger" style="width:100%;justify-content:center;" onclick="doRecovery()">🗝️ Reset & Masuk</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SETUP SCREEN
+══════════════════════════════════════ -->
+<div id="setup-screen">
+  <div class="setup-wrap">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="font-size:32px;margin-bottom:8px;">✨</div>
+      <div style="font-size:22px;font-weight:800;">Setup Vault Baru</div>
+      <div style="font-size:13px;color:var(--muted2);margin-top:4px;">Ikuti 3 langkah berikut</div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div class="step-title">Buat Master Password</div>
+      <div class="step-desc">Password ini digunakan untuk mengenkripsi semua datamu. <strong style="color:var(--red)">Jangan sampai lupa</strong> — tidak ada server yang bisa memulihkannya.</div>
+      <div class="fg">
+        <div class="pw-wrap">
+          <input type="password" id="setup-pw" placeholder="Buat master password kuat..." oninput="updateSetupStr()">
+          <button class="pwtog" onclick="togglePw('setup-pw',this)">👁️</button>
+        </div>
+        <div class="str-bar"><div class="str-fill" id="setup-str-fill" style="width:0%"></div></div>
+        <div id="setup-str-label" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+      </div>
+      <div class="fg">
+        <input type="password" id="setup-pw2" placeholder="Ulangi master password...">
+      </div>
+      <div class="fg">
+        <label class="flbl">Hint Password (opsional, disimpan plaintext)</label>
+        <input type="text" id="setup-hint" placeholder="Contoh: nama hewan pertama + tahun lahir">
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div class="step-title">Recovery Phrase — Catat & Simpan!</div>
+      <div class="step-desc">5 kata acak ini adalah satu-satunya cara reset master password jika lupa. <strong style="color:var(--gold2)">Simpan di tempat berbeda</strong> (kertas, notes HP, dsb). Tidak bisa dilihat lagi setelah setup.</div>
+      <div class="recovery-grid" id="setup-rec-grid">
+        <!-- generated by JS -->
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="regenRecovery()" style="margin-bottom:10px;">🔄 Generate Ulang</button>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--muted2);cursor:pointer;">
+        <input type="checkbox" id="rec-confirm" style="width:auto;margin-top:2px;">
+        Saya sudah mencatat recovery phrase di tempat yang aman
+      </label>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div class="step-title">Konfirmasi</div>
+      <div class="step-desc">Pastikan semua data di atas sudah benar sebelum membuat vault.</div>
+      <div id="setup-err" style="font-size:12px;color:var(--red);margin-bottom:12px;display:none;"></div>
+      <button class="btn btn-gold" style="width:100%;justify-content:center;" onclick="finishSetup()">🔐 Buat Vault Sekarang</button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;" onclick="cancelSetup()">← Kembali</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════ -->
+<div id="main-app">
+<div class="app">
+
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">🔐</div>
+      <div>
+        <div class="logo-name"><span>Vault</span><span class="logo-ver">v2</span></div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-ghost btn-sm" onclick="openSync()">📡 Sync</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportVault()">💾 Ekspor</button>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
+        📤 Impor
+        <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
+      </label>
+      <button class="btn btn-danger btn-sm" onclick="lockApp()">🔒 Kunci</button>
+      <button class="btn btn-gold btn-sm" onclick="openAdd()">+ Tambah</button>
+    </div>
+  </header>
+
+  <div class="notice">
+    <span>🛡️</span>
+    <span>Data terenkripsi AES-256 di browser. Gunakan <strong>Ekspor</strong> untuk backup file <code>.vault</code> terenkripsi, atau <strong>Sync</strong> untuk kirim ke perangkat lain via QR / teks terenkripsi.</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-n" id="st-total">0</div><div class="stat-l">Total Akun</div></div>
+    <div class="stat"><div class="stat-n" id="st-crypto">0</div><div class="stat-l">Crypto Wallet</div></div>
+    <div class="stat"><div class="stat-n" id="st-cat">0</div><div class="stat-l">Kategori</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span class="si">🔍</span>
+      <input type="text" class="search-input" id="search-input" placeholder="Cari nama, username, wallet...">
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="flt on" onclick="setFilter('semua',this)">Semua</button>
+    <button class="flt" onclick="setFilter('sosmed',this)">📱 Sosmed</button>
+    <button class="flt" onclick="setFilter('email',this)">📧 Email</button>
+    <button class="flt" onclick="setFilter('bank',this)">🏦 Bank</button>
+    <button class="flt" onclick="setFilter('game',this)">🎮 Game</button>
+    <button class="flt" onclick="setFilter('crypto',this)">🪙 Crypto</button>
+    <button class="flt" onclick="setFilter('lainnya',this)">🗂️ Lainnya</button>
+  </div>
+
+  <div class="cards" id="cards">
+    <div class="empty" id="empty">
+      <div class="empty-ico">🗄️</div>
+      <div class="empty-t">Vault masih kosong</div>
+      <div class="empty-d">Klik <strong>+ Tambah</strong> untuk menyimpan akun pertama.</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL TAMBAH/EDIT
+══════════════════════════════════════ -->
+<div class="overlay" id="modal-entry">
+<div class="modal">
+  <div class="modal-title"><span id="me-icon">➕</span><span id="me-title">Tambah Akun</span></div>
+
+  <div class="fg">
+    <label class="flbl">Kategori</label>
+    <select id="f-cat" onchange="onCatChange()">
+      <option value="sosmed">📱 Media Sosial</option>
+      <option value="email">📧 Email</option>
+      <option value="bank">🏦 Bank / Keuangan</option>
+      <option value="game">🎮 Game</option>
+      <option value="crypto">🪙 Crypto Wallet</option>
+      <option value="lainnya">🗂️ Lainnya</option>
+    </select>
+  </div>
+
+  <div class="fg">
+    <label class="flbl">Nama Layanan / Wallet *</label>
+    <input type="text" id="f-name" placeholder="cth: Instagram, MetaMask, Trust Wallet">
+  </div>
+
+  <!-- Normal fields -->
+  <div id="normal-fields">
+    <div class="fg">
+      <label class="flbl">Email / Username *</label>
+      <input type="text" id="f-user" placeholder="email@contoh.com atau @username">
+    </div>
+    <div class="fg">
+      <label class="flbl">Password *</label>
+      <div class="pw-wrap">
+        <input type="password" id="f-pass" placeholder="••••••••" oninput="updateStr()">
+        <button class="pwtog" onclick="togglePw('f-pass',this)">👁️</button>
+      </div>
+      <div class="str-bar"><div class="str-fill" id="str-fill" style="width:0%"></div></div>
+    </div>
+    <div class="fg">
+      <label class="flbl">URL (opsional)</label>
+      <input type="url" id="f-url" placeholder="https://...">
+    </div>
+  </div>
+
+  <!-- Crypto fields -->
+  <div id="crypto-fields" style="display:none;">
+    <div class="fg">
+      <label class="flbl">Jaringan / Network</label>
+      <select id="f-network">
+        <option>Ethereum (ETH)</option>
+        <option>BNB Smart Chain (BSC)</option>
+        <option>Solana (SOL)</option>
+        <option>Polygon (MATIC)</option>
+        <option>Avalanche (AVAX)</option>
+        <option>Bitcoin (BTC)</option>
+        <option>Tron (TRX)</option>
+        <option>Lainnya</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label class="flbl">Alamat Wallet (Public Address — opsional)</label>
+      <input type="text" id="f-wallet-addr" placeholder="0x... atau alamat public wallet" style="font-family:var(--mono);font-size:12px;">
+    </div>
+    <div class="fg">
+      <label class="flbl">Password / PIN Wallet (opsional)</label>
+      <div class="pw-wrap">
+        <input type="password" id="f-wallet-pw" placeholder="Password aplikasi wallet">
+        <button class="pwtog" onclick="togglePw('f-wallet-pw',this)">👁️</button>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="flbl">Seed Phrase</label>
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="radio" name="seed-len" value="12" checked onchange="setSeedLen(12)" style="width:auto;"> 12 kata
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="radio" name="seed-len" value="24" onchange="setSeedLen(24)" style="width:auto;"> 24 kata
+        </label>
+        <div style="margin-left:auto;font-size:11px;color:var(--muted)">Pisah per kata</div>
+      </div>
+      <div class="seed-inputs s12" id="seed-input-grid">
+        <!-- generated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <div class="fg">
+    <label class="flbl">Catatan (opsional)</label>
+    <textarea id="f-note" rows="2" placeholder="PIN, kode backup, info tambahan..." style="resize:vertical;"></textarea>
+  </div>
+
+  <div class="modal-actions">
+    <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-entry')">Batal</button>
+    <button class="btn btn-gold" style="flex:2;justify-content:center;" onclick="saveEntry()">💾 Simpan</button>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL SYNC
+══════════════════════════════════════ -->
+<div class="overlay" id="modal-sync">
+<div class="modal">
+  <div class="modal-title">📡 Sync Antar Perangkat</div>
+
+  <div style="background:rgba(0,212,170,.07);border:1px solid rgba(0,212,170,.18);border-radius:10px;padding:11px 14px;font-size:12px;color:rgba(0,212,170,.8);margin-bottom:18px;line-height:1.6;">
+    Data yang di-sync <strong>sudah terenkripsi</strong> dengan master password-mu. Penerima harus tahu master password untuk membukanya.
+  </div>
+
+  <div class="sync-tabs">
+    <button class="sync-tab on" onclick="setSyncTab('export',this)">📤 Kirim ke HP/Laptop</button>
+    <button class="sync-tab" onclick="setSyncTab('import',this)">📥 Terima dari HP/Laptop</button>
+  </div>
+
+  <!-- Export panel -->
+  <div class="sync-panel on" id="sp-export">
+    <div style="display:flex;gap:8px;margin-bottom:18px;">
+      <button class="btn btn-teal btn-sm" onclick="genQR()" style="flex:1;justify-content:center;">📷 Generate QR Code</button>
+      <button class="btn btn-ghost btn-sm" onclick="genText()" style="flex:1;justify-content:center;">📋 Generate Teks</button>
+    </div>
+
+    <div id="qr-container" style="display:none;">
+      <div style="font-size:13px;color:var(--muted2);text-align:center;">Scan QR ini dari perangkat lain.<br>QR berisi data terenkripsi.</div>
+      <div id="qr-canvas"></div>
+      <div style="font-size:11px;color:var(--muted);text-align:center;">QR hanya berlaku dalam sesi ini</div>
+    </div>
+
+    <div id="text-container" style="display:none;">
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:8px;">Copy teks di bawah → kirim ke diri sendiri (WA, Notes, Email) → paste di perangkat lain:</div>
+      <div class="enc-text-area" id="enc-text-display"></div>
+      <button class="btn btn-teal btn-sm" style="width:100%;justify-content:center;margin-top:10px;" onclick="copyEncText()">📋 Copy Teks Terenkripsi</button>
+    </div>
+  </div>
+
+  <!-- Import panel -->
+  <div class="sync-panel" id="sp-import">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Paste teks terenkripsi dari perangkat lain:</div>
+    <textarea class="import-text-area" id="import-text-input" placeholder="Paste teks terenkripsi di sini..."></textarea>
+    <div id="sync-err" style="font-size:12px;color:var(--red);margin-top:6px;display:none;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;" onclick="closeModal('modal-sync')">Batal</button>
+      <button class="btn btn-teal btn-sm" style="flex:2;justify-content:center;" onclick="importFromText()">📥 Impor & Gabungkan</button>
+    </div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:10px;">Atau scan QR dari kamera (jika browser mendukung):</div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="startQRScan()">📷 Scan QR via Kamera</button>
+      <div id="qr-scan-area" style="margin-top:12px;display:none;">
+        <video id="qr-video" style="width:100%;border-radius:10px;" autoplay></video>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px;">Arahkan kamera ke QR Code</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-sync')">Tutup</button>
+  </div>
+</div>
+</div>
+
+<script>
+// ════════════════════════════════
+// CRYPTO UTILS (AES-GCM via WebCrypto)
+// ════════════════════════════════
+const ENC = {
+  async deriveKey(password, salt) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name:'PBKDF2', salt, iterations:310000, hash:'SHA-256' },
+      keyMaterial, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+    );
+  },
+  async encrypt(plaintext, password) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv   = crypto.getRandomValues(new Uint8Array(12));
+    const key  = await this.deriveKey(password, salt);
+    const enc  = new TextEncoder();
+    const ct   = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, enc.encode(plaintext));
+    const buf  = new Uint8Array(salt.byteLength + iv.byteLength + ct.byteLength);
+    buf.set(salt, 0); buf.set(iv, 16); buf.set(new Uint8Array(ct), 28);
+    return btoa(String.fromCharCode(...buf));
+  },
+  async decrypt(b64, password) {
+    const buf  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const salt = buf.slice(0,16), iv = buf.slice(16,28), ct = buf.slice(28);
+    const key  = await this.deriveKey(password, salt);
+    const pt   = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(pt);
+  }
+};
+
+// ════════════════════════════════
+// APP STATE
+// ════════════════════════════════
+let vault = [];
+let masterPw = '';
+let vaultMeta = {}; // {hint, recoveryHash}
+let currentFilter = 'semua';
+let editId = null;
+let seedLen = 12;
+let expandedIds = new Set();
+let pwVisible = new Set();
+let seedVisible = new Set();
+
+const WORDS = ['apple','brave','cloud','dance','eagle','frost','grace','heart','ivory','jewel','kings','light','magic','noble','ocean','pearl','quest','river','storm','truth','ultra','vivid','winds','xenon','yawns','zebra','amber','blaze','crisp','delta','ember','flare','glade','haven','indie','jazzy','kneel','lunar','maple','nexus','oaken','prism','quirk','roost','slate','titan','unity','vapor','waltz','xenix','yield','zones'];
+
+function genRecovery() {
+  const w = [];
+  while (w.length < 5) {
+    const wd = WORDS[Math.floor(Math.random()*WORDS.length)];
+    if (!w.includes(wd)) w.push(wd);
+  }
+  return w;
+}
+
+let currentRecovery = [];
+
+// ════════════════════════════════
+// SETUP
+// ════════════════════════════════
+function showSetup() {
+  document.getElementById('setup-screen').style.display = 'block';
+  regenRecovery();
+}
+function cancelSetup() {
+  document.getElementById('setup-screen').style.display = 'none';
+}
+function regenRecovery() {
+  currentRecovery = genRecovery();
+  const g = document.getElementById('setup-rec-grid');
+  g.innerHTML = currentRecovery.map((w,i)=>`
+    <div class="rec-word"><span>${i+1}</span><strong>${w}</strong></div>
+  `).join('');
+  document.getElementById('rec-confirm').checked = false;
+}
+function updateSetupStr() {
+  const pw = document.getElementById('setup-pw').value;
+  const fill = document.getElementById('setup-str-fill');
+  const lbl = document.getElementById('setup-str-label');
+  let s = 0;
+  if (pw.length >= 8) s++;
+  if (pw.length >= 12) s++;
+  if (/[A-Z]/.test(pw)) s++;
+  if (/[0-9]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  const pct = (s/5)*100;
+  const clrs = ['#ff4d6d','#ff7043','#ffd166','#00d4aa','#06d6a0'];
+  const lbls = ['Sangat Lemah','Lemah','Sedang','Kuat','Sangat Kuat'];
+  fill.style.width = pct+'%';
+  fill.style.background = pw ? clrs[Math.min(s-1,4)] : '';
+  lbl.textContent = pw ? lbls[Math.min(s-1,4)] : '';
+  lbl.style.color = pw ? clrs[Math.min(s-1,4)] : '';
+}
+async function finishSetup() {
+  const pw   = document.getElementById('setup-pw').value;
+  const pw2  = document.getElementById('setup-pw2').value;
+  const hint = document.getElementById('setup-hint').value.trim();
+  const err  = document.getElementById('setup-err');
+  err.style.display = 'none';
+  if (!pw) { showSetupErr('Master password wajib diisi.'); return; }
+  if (pw !== pw2) { showSetupErr('Password tidak cocok.'); return; }
+  if (!document.getElementById('rec-confirm').checked) { showSetupErr('Konfirmasi bahwa kamu sudah mencatat recovery phrase.'); return; }
+  // Hash recovery for verification
+  const recStr = currentRecovery.join(' ');
+  const recHash = await hashStr(recStr);
+  vaultMeta = { hint, recoveryHash: recHash, recovery: recStr }; // store plain for demo; ideally encrypt too
+  masterPw = pw;
+  vault = [];
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  render();
+  toast('✅ Vault berhasil dibuat!');
+}
+function showSetupErr(msg) {
+  const el = document.getElementById('setup-err');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+// ════════════════════════════════
+// LOCK / UNLOCK
+// ════════════════════════════════
+function setLockTab(name, btn) {
+  document.querySelectorAll('.lock-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-unlock').style.display = name==='unlock'?'block':'none';
+  document.getElementById('panel-recover').style.display = name==='recover'?'block':'none';
+}
+function unlockVault() {
+  const pw = document.getElementById('unlock-pw').value;
+  const err = document.getElementById('unlock-err');
+  if (!pw) { showUnlockErr('Masukkan master password.'); return; }
+  if (!masterPw) {
+    // No vault yet
+    document.getElementById('no-vault-msg').style.display = 'block';
+    err.style.display = 'none';
+    return;
+  }
+  if (pw !== masterPw) { showUnlockErr('Password salah. Coba lagi.'); return; }
+  err.style.display = 'none';
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  render();
+}
+function showUnlockErr(msg) {
+  const el = document.getElementById('unlock-err');
+  el.textContent = msg; el.style.display = 'block';
+}
+function lockApp() {
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('lock-screen').style.display = 'flex';
+  document.getElementById('unlock-pw').value = '';
+  document.getElementById('unlock-err').style.display = 'none';
+  expandedIds.clear(); pwVisible.clear(); seedVisible.clear();
+}
+async function doRecovery() {
+  const recInput = document.getElementById('recovery-input').value.trim().toLowerCase();
+  const newPw    = document.getElementById('recovery-newpw').value;
+  const err      = document.getElementById('recover-err');
+  err.style.display = 'none';
+  if (!recInput) { err.textContent='Masukkan recovery phrase.'; err.style.display='block'; return; }
+  if (!newPw)    { err.textContent='Masukkan password baru.';  err.style.display='block'; return; }
+  if (!vaultMeta.recovery) { err.textContent='Tidak ada vault yang bisa di-recover.'; err.style.display='block'; return; }
+  if (recInput !== vaultMeta.recovery) { err.textContent='Recovery phrase salah.'; err.style.display='block'; return; }
+  masterPw = newPw;
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  render();
+  toast('✅ Password berhasil direset!');
+}
+
+// ════════════════════════════════
+// RENDER
+// ════════════════════════════════
+const CAT_ICON  = {sosmed:'📱',email:'📧',bank:'🏦',game:'🎮',crypto:'🪙',lainnya:'🗂️'};
+const CAT_LABEL = {sosmed:'Sosmed',email:'Email',bank:'Bank',game:'Game',crypto:'Crypto',lainnya:'Lainnya'};
+
+function render() {
+  const q = (document.getElementById('search-input')||{value:''}).value.toLowerCase();
+  const grid = document.getElementById('cards');
+  const empty = document.getElementById('empty');
+
+  const filtered = vault.filter(e => {
+    const mc = currentFilter==='semua' || e.cat===currentFilter;
+    const mq = !q || e.name.toLowerCase().includes(q) || (e.user||'').toLowerCase().includes(q) || (e.walletAddr||'').toLowerCase().includes(q);
+    return mc && mq;
+  });
+
+  document.getElementById('st-total').textContent = vault.length;
+  document.getElementById('st-crypto').textContent = vault.filter(e=>e.cat==='crypto').length;
+  document.getElementById('st-cat').textContent = new Set(vault.map(e=>e.cat)).size;
+
+  grid.querySelectorAll('.card').forEach(c=>c.remove());
+  empty.style.display = filtered.length===0 ? 'block' : 'none';
+
+  filtered.forEach(e => {
+    const card = document.createElement('div');
+    card.className = 'card' + (e.cat==='crypto'?' crypto-card':'');
+    card.dataset.id = e.id;
+
+    const isOpen = expandedIds.has(e.id);
+    const isPwVis = pwVisible.has(e.id);
+    const isSeedVis = seedVisible.has(e.id);
+
+    const sub = e.cat==='crypto'
+      ? (e.walletAddr ? e.walletAddr.slice(0,18)+'…' : e.network||'Crypto')
+      : (e.user||'');
+
+    card.innerHTML = `
+      <div class="avatar av-${e.cat}">${CAT_ICON[e.cat]}</div>
+      <div class="card-info">
+        <div class="card-name">${esc(e.name)}<span class="chip chip-${e.cat}">${CAT_LABEL[e.cat]}</span></div>
+        <div class="card-sub">${esc(sub)}</div>
+      </div>
+      <div class="card-btns">
+        <button class="ibtn" title="Detail" onclick="toggleExp('${e.id}')">${isOpen?'🙈':'👁️'}</button>
+        <button class="ibtn" title="Edit" onclick="editEntry('${e.id}')">✏️</button>
+        <button class="ibtn del" title="Hapus" onclick="deleteEntry('${e.id}')">🗑️</button>
+      </div>
+      ${isOpen ? buildExpanded(e, isPwVis, isSeedVis) : ''}
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function buildExpanded(e, isPwVis, isSeedVis) {
+  if (e.cat === 'crypto') {
+    const seeds = (e.seedPhrase||[]);
+    const seedCount = seeds.length;
+    let seedHtml = '';
+    if (seedCount > 0) {
+      if (!isSeedVis) {
+        seedHtml = `<div class="frow">
+          <span class="flabel">Seed Phrase</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">${'••• '.repeat(Math.min(seedCount,8))}(${seedCount} kata)</span>
+          <button class="ibtn" onclick="toggleSeedVis('${e.id}')">👁️ Tampilkan</button>
+        </div>`;
+      } else {
+        const gridView = `<div class="seed-grid ${seedCount<=12?'g12':'g24'}" id="sv-grid-${e.id}">
+          ${seeds.map((w,i)=>`<div class="seed-word"><span>${i+1}</span><strong>${esc(w)}</strong></div>`).join('')}
+        </div>`;
+        const listView = `<div class="seed-list" id="sv-list-${e.id}" style="display:none">
+          ${seeds.map((w,i)=>`<div class="seed-list-item"><span class="seed-num">${i+1}.</span><span class="seed-val">${esc(w)}</span></div>`).join('')}
+        </div>`;
+        seedHtml = `<div class="frow" style="align-items:flex-start;">
+          <span class="flabel">Seed (${seedCount})</span>
+          <div style="flex:1;">
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-sm" onclick="toggleSeedView('${e.id}')">🔀 Toggle Grid/List</button>
+              <button class="ibtn" onclick="copyText('${e.seedPhrase.join(' ')}',this)" title="Salin semua">📋</button>
+              <button class="ibtn" onclick="toggleSeedVis('${e.id}')">🙈 Sembunyikan</button>
+            </div>
+            ${gridView}${listView}
+          </div>
+        </div>`;
+      }
+    }
+    return `<div class="exp open">
+      ${e.network ? `<div class="frow"><span class="flabel">Network</span><span class="fval">${esc(e.network)}</span></div>` : ''}
+      ${e.walletAddr ? `<div class="frow"><span class="flabel">Alamat</span><span class="fval">${esc(e.walletAddr)}</span><button class="ibtn" onclick="copyText('${esc(e.walletAddr)}',this)">📋</button></div>` : ''}
+      ${e.walletPw ? `<div class="frow"><span class="flabel">Password</span><span class="fval ${isPwVis?'':'dot'}">${isPwVis?esc(e.walletPw):'••••••••'}</span><button class="ibtn" onclick="togglePwVis('${e.id}')">👁️</button><button class="ibtn" onclick="copyText('${esc(e.walletPw)}',this)">📋</button></div>` : ''}
+      ${seedHtml}
+      ${e.note ? `<div class="frow" style="align-items:flex-start"><span class="flabel">Catatan</span><span style="font-size:12px;color:var(--muted2);line-height:1.5;">${esc(e.note)}</span></div>` : ''}
+    </div>`;
+  } else {
+    return `<div class="exp open">
+      <div class="frow">
+        <span class="flabel">Username</span>
+        <span class="fval">${esc(e.user)}</span>
+        <button class="ibtn" onclick="copyText('${esc(e.user)}',this)">📋</button>
+      </div>
+      <div class="frow">
+        <span class="flabel">Password</span>
+        <span class="fval ${isPwVis?'':'dot'}">${isPwVis?esc(e.pass):'••••••••'}</span>
+        <button class="ibtn" onclick="togglePwVis('${e.id}')">👁️</button>
+        <button class="ibtn" onclick="copyText('${esc(e.pass)}',this)">📋</button>
+      </div>
+      ${e.url ? `<div class="frow"><span class="flabel">URL</span><a href="${esc(e.url)}" target="_blank" style="color:var(--teal);font-family:var(--mono);font-size:12px;">${esc(e.url)}</a></div>` : ''}
+      ${e.note ? `<div class="frow" style="align-items:flex-start"><span class="flabel">Catatan</span><span style="font-size:12px;color:var(--muted2);line-height:1.5;">${esc(e.note)}</span></div>` : ''}
+    </div>`;
+  }
+}
+
+function toggleExp(id) {
+  if (expandedIds.has(id)) expandedIds.delete(id);
+  else expandedIds.add(id);
+  render();
+}
+function togglePwVis(id) {
+  if (pwVisible.has(id)) pwVisible.delete(id); else pwVisible.add(id);
+  render();
+}
+function toggleSeedVis(id) {
+  if (seedVisible.has(id)) seedVisible.delete(id); else seedVisible.add(id);
+  render();
+}
+function toggleSeedView(id) {
+  const g = document.getElementById('sv-grid-'+id);
+  const l = document.getElementById('sv-list-'+id);
+  if (!g||!l) return;
+  if (g.style.display==='none') { g.style.display=''; l.style.display='none'; }
+  else { g.style.display='none'; l.style.display='block'; }
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.flt').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  render();
+}
+document.getElementById('search-input') && document.getElementById('search-input').addEventListener('input', render);
+
+// ════════════════════════════════
+// MODAL ENTRY
+// ════════════════════════════════
+function openAdd() { openEntryModal(null); }
+function openEntryModal(entry) {
+  editId = entry ? entry.id : null;
+  document.getElementById('me-icon').textContent = entry ? '✏️' : '➕';
+  document.getElementById('me-title').textContent = entry ? 'Edit Akun' : 'Tambah Akun';
+
+  const cat = entry ? entry.cat : 'sosmed';
+  document.getElementById('f-cat').value = cat;
+  document.getElementById('f-name').value = entry ? entry.name : '';
+  document.getElementById('f-user').value = entry ? (entry.user||'') : '';
+  document.getElementById('f-pass').value = entry ? (entry.pass||'') : '';
+  document.getElementById('f-url').value  = entry ? (entry.url||'')  : '';
+  document.getElementById('f-note').value = entry ? (entry.note||'') : '';
+  document.getElementById('f-network').value = entry ? (entry.network||'Ethereum (ETH)') : 'Ethereum (ETH)';
+  document.getElementById('f-wallet-addr').value = entry ? (entry.walletAddr||'') : '';
+  document.getElementById('f-wallet-pw').value   = entry ? (entry.walletPw||'')   : '';
+
+  seedLen = entry && entry.seedPhrase ? entry.seedPhrase.length : 12;
+  document.querySelector(`input[name="seed-len"][value="${seedLen<=12?12:24}"]`).checked = true;
+  buildSeedInputs(seedLen, entry ? entry.seedPhrase : []);
+  onCatChange();
+  updateStr();
+  document.getElementById('modal-entry').classList.add('open');
+}
+function onCatChange() {
+  const c = document.getElementById('f-cat').value;
+  document.getElementById('normal-fields').style.display = c==='crypto' ? 'none' : 'block';
+  document.getElementById('crypto-fields').style.display = c==='crypto' ? 'block' : 'none';
+}
+function setSeedLen(n) {
+  seedLen = n;
+  buildSeedInputs(n, getSeedValues());
+}
+function buildSeedInputs(n, existing=[]) {
+  const grid = document.getElementById('seed-input-grid');
+  grid.className = `seed-inputs ${n<=12?'s12':'s24'}`;
+  grid.innerHTML = Array.from({length:n},(_,i)=>`
+    <div class="seed-inp-wrap">
+      <span class="seed-inp-num">${i+1}</span>
+      <input type="text" class="seed-inp" data-idx="${i}" value="${esc(existing[i]||'')}" placeholder="kata" autocomplete="off" spellcheck="false" style="font-family:var(--mono);font-size:12px;padding-left:24px;padding-top:8px;padding-bottom:8px;">
+    </div>
+  `).join('');
+}
+function getSeedValues() {
+  return Array.from(document.querySelectorAll('.seed-inp')).map(i=>i.value.trim().toLowerCase());
+}
+function saveEntry() {
+  const cat  = document.getElementById('f-cat').value;
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { toast('⚠️ Nama layanan wajib diisi!'); return; }
+
+  let entry = { id: editId || uid(), cat, name, note: document.getElementById('f-note').value.trim() };
+
+  if (cat === 'crypto') {
+    const seeds = getSeedValues().filter(w=>w);
+    entry.network    = document.getElementById('f-network').value;
+    entry.walletAddr = document.getElementById('f-wallet-addr').value.trim();
+    entry.walletPw   = document.getElementById('f-wallet-pw').value;
+    entry.seedPhrase = seeds;
+  } else {
+    const user = document.getElementById('f-user').value.trim();
+    const pass = document.getElementById('f-pass').value;
+    if (!user || !pass) { toast('⚠️ Username dan password wajib diisi!'); return; }
+    entry.user = user; entry.pass = pass;
+    entry.url  = document.getElementById('f-url').value.trim();
+  }
+
+  if (editId) {
+    const idx = vault.findIndex(e=>e.id===editId);
+    vault[idx] = entry;
+    toast('✅ Akun diperbarui');
+  } else {
+    vault.push(entry);
+    toast('✅ Akun disimpan');
+  }
+  closeModal('modal-entry');
+  render();
+}
+function editEntry(id) {
+  const e = vault.find(e=>e.id===id);
+  if (e) openEntryModal(e);
+}
+function deleteEntry(id) {
+  const e = vault.find(e=>e.id===id);
+  if (!e) return;
+  if (confirm(`Hapus "${e.name}"? Tidak bisa dibatalkan.`)) {
+    vault = vault.filter(e=>e.id!==id);
+    expandedIds.delete(id); pwVisible.delete(id); seedVisible.delete(id);
+    render(); toast('🗑️ Akun dihapus');
+  }
+}
+
+function updateStr() {
+  const pw = document.getElementById('f-pass').value;
+  const fill = document.getElementById('str-fill');
+  let s=0;
+  if(pw.length>=8)s++;if(pw.length>=12)s++;
+  if(/[A-Z]/.test(pw))s++;if(/[0-9]/.test(pw))s++;if(/[^A-Za-z0-9]/.test(pw))s++;
+  const pct=(s/5)*100;
+  const clrs=['#ff4d6d','#ff7043','#ffd166','#00d4aa','#06d6a0'];
+  fill.style.width=pct+'%';
+  fill.style.background=pw?(clrs[Math.min(s-1,4)]):'';
+}
+
+// ════════════════════════════════
+// SYNC MODAL
+// ════════════════════════════════
+function openSync() {
+  document.getElementById('modal-sync').classList.add('open');
+  document.getElementById('qr-container').style.display='none';
+  document.getElementById('text-container').style.display='none';
+}
+function setSyncTab(name,btn) {
+  document.querySelectorAll('.sync-tab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.querySelectorAll('.sync-panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('sp-'+name).classList.add('on');
+}
+async function genQR() {
+  if (vault.length===0) { toast('⚠️ Vault kosong'); return; }
+  const payload = JSON.stringify({ vault, meta: {hint:vaultMeta.hint} });
+  const encrypted = await ENC.encrypt(payload, masterPw);
+  const syncPayload = 'VAULT2:'+encrypted;
+  const container = document.getElementById('qr-canvas');
+  container.innerHTML = '';
+  document.getElementById('qr-container').style.display='flex';
+  document.getElementById('text-container').style.display='none';
+  new QRCode(container, { text: syncPayload, width:220, height:220, colorDark:'#000', colorLight:'#fff', correctLevel:QRCode.CorrectLevel.M });
+}
+async function genText() {
+  if (vault.length===0) { toast('⚠️ Vault kosong'); return; }
+  const payload = JSON.stringify({ vault, meta:{hint:vaultMeta.hint} });
+  const encrypted = await ENC.encrypt(payload, masterPw);
+  const syncPayload = 'VAULT2:'+encrypted;
+  document.getElementById('enc-text-display').textContent = syncPayload;
+  document.getElementById('text-container').style.display='block';
+  document.getElementById('qr-container').style.display='none';
+}
+function copyEncText() {
+  const t = document.getElementById('enc-text-display').textContent;
+  copyText(t);
+  toast('📋 Teks terenkripsi disalin!');
+}
+async function importFromText() {
+  const raw = document.getElementById('import-text-input').value.trim();
+  const err = document.getElementById('sync-err');
+  err.style.display='none';
+  if (!raw) { err.textContent='Paste teks terenkripsi terlebih dahulu.'; err.style.display='block'; return; }
+  try {
+    const enc = raw.startsWith('VAULT2:') ? raw.slice(7) : raw;
+    const decrypted = await ENC.decrypt(enc, masterPw);
+    const data = JSON.parse(decrypted);
+    const incoming = data.vault || data;
+    if (!Array.isArray(incoming)) throw new Error('Format tidak valid');
+    const existIds = new Set(vault.map(e=>e.id));
+    const merged = incoming.filter(e=>!existIds.has(e.id));
+    vault.push(...merged);
+    render();
+    closeModal('modal-sync');
+    toast(`✅ ${merged.length} akun baru ditambahkan!`);
+  } catch(e) {
+    err.textContent='Gagal mendekripsi. Pastikan master password sama dengan perangkat pengirim.';
+    err.style.display='block';
+  }
+}
+function startQRScan() {
+  const area = document.getElementById('qr-scan-area');
+  area.style.display = area.style.display==='none' ? 'block' : 'none';
+  if (area.style.display==='block') {
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+      .then(stream=>{
+        document.getElementById('qr-video').srcObject=stream;
+        toast('📷 Kamera aktif — arahkan ke QR');
+      })
+      .catch(()=>{ area.style.display='none'; toast('⚠️ Kamera tidak bisa diakses'); });
+  } else {
+    const v=document.getElementById('qr-video');
+    if(v.srcObject) v.srcObject.getTracks().forEach(t=>t.stop());
+  }
+}
+
+// ════════════════════════════════
+// EXPORT / IMPORT FILE
+// ════════════════════════════════
+async function exportVault() {
+  if (vault.length===0) { toast('⚠️ Vault kosong'); return; }
+  const payload = JSON.stringify({ vault, meta:{hint:vaultMeta.hint, recoveryHash:vaultMeta.recoveryHash} });
+  const encrypted = await ENC.encrypt(payload, masterPw);
+  const fileData = JSON.stringify({ format:'vault2', hint:vaultMeta.hint||'', data:encrypted });
+  const blob = new Blob([fileData],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`vault-backup-${new Date().toISOString().slice(0,10)}.vault`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('💾 File .vault terenkripsi diunduh!');
+}
+async function importVaultFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      // Detect format
+      let incoming;
+      if (parsed.format === 'vault2') {
+        // Encrypted vault
+        if (!masterPw) {
+          // Prompt for password
+          const pw = prompt('Masukkan master password untuk membuka file vault ini:');
+          if (!pw) return;
+          try {
+            const dec = await ENC.decrypt(parsed.data, pw);
+            const data = JSON.parse(dec);
+            incoming = data.vault;
+            // If no vault yet, set up state
+            if (!masterPw) {
+              masterPw = pw;
+              vaultMeta = { hint: parsed.hint||'', recoveryHash: data.meta?.recoveryHash||'' };
+            }
+          } catch {
+            alert('Password salah atau file rusak.'); return;
+          }
+        } else {
+          try {
+            const dec = await ENC.decrypt(parsed.data, masterPw);
+            const data = JSON.parse(dec);
+            incoming = data.vault;
+          } catch {
+            // Try asking for password
+            const pw = prompt('Master password berbeda. Masukkan password file ini:');
+            if (!pw) return;
+            try {
+              const dec = await ENC.decrypt(parsed.data, pw);
+              const data = JSON.parse(dec);
+              incoming = data.vault;
+            } catch { alert('Password salah.'); return; }
+          }
+        }
+      } else {
+        // Old plaintext format
+        incoming = parsed.accounts || parsed;
+      }
+      if (!Array.isArray(incoming)) throw new Error('Format tidak valid');
+      const valid = incoming.filter(a=>a.name);
+      if (!masterPw && valid.length>0) {
+        // vault was empty, just load
+        vault = valid;
+      } else {
+        const mode = confirm(`Ditemukan ${valid.length} akun.\nOK = Gabungkan\nCancel = Ganti semua`);
+        if (mode) {
+          const existIds = new Set(vault.map(e=>e.id));
+          vault.push(...valid.filter(a=>!existIds.has(a.id)));
+        } else { vault = valid; }
+      }
+      // Go to main app if not there
+      document.getElementById('lock-screen').style.display='none';
+      document.getElementById('setup-screen').style.display='none';
+      document.getElementById('main-app').style.display='block';
+      render();
+      toast(`✅ ${valid.length} akun diimpor!`);
+    } catch(err) { alert('File tidak valid: '+err.message); }
+  };
+  reader.readAsText(file);
+  event.target.value='';
+}
+
+// ════════════════════════════════
+// UTILS
+// ════════════════════════════════
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id==='modal-sync') {
+    const v=document.getElementById('qr-video');
+    if(v&&v.srcObject) v.srcObject.getTracks().forEach(t=>t.stop());
+    document.getElementById('qr-scan-area').style.display='none';
+  }
+}
+function togglePw(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  if (inp.type==='password') { inp.type='text'; btn.textContent='🙈'; }
+  else { inp.type='password'; btn.textContent='👁️'; }
+}
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).catch(()=>{
+    const ta=document.createElement('textarea');
+    ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  if (btn) { const o=btn.textContent; btn.textContent='✓'; setTimeout(()=>btn.textContent=o,1500); }
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function uid() {
+  return Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+}
+async function hashStr(s) {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(s));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2800);
+}
+
+// Modal close on overlay click
+['modal-entry','modal-sync'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',function(e){
+    if(e.target===this) closeModal(id);
+  });
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') ['modal-entry','modal-sync'].forEach(closeModal);
+  if((e.ctrlKey||e.metaKey)&&e.key==='n'&&document.getElementById('main-app').style.display==='block'){
+    e.preventDefault();openAdd();
+  }
+});
+
+// Init: check if vault exists
+window.addEventListener('load',()=>{
+  if (!masterPw) document.getElementById('no-vault-msg').style.display='block';
+});
+</script>
+</body>
+</html>
+<script>
+// ════════════════════════════════
+// PWA — Service Worker + Install Banner
+// ════════════════════════════════
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js')
+    .then(r => console.log('[Vault] SW:', r.scope))
+    .catch(e => console.warn('[Vault] SW error:', e));
+}
+
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  setTimeout(showInstallBanner, 2500);
+});
+window.addEventListener('appinstalled', () => { toast('✅ Vault berhasil diinstall!'); deferredPrompt=null; });
+
+function showInstallBanner() {
+  if (!deferredPrompt || window.matchMedia('(display-mode: standalone)').matches) return;
+  if (document.getElementById('install-banner')) return;
+  const b = document.createElement('div');
+  b.id = 'install-banner';
+  b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e1f2e;border:1px solid #f0a500;border-radius:14px;padding:14px 20px;display:flex;align-items:center;gap:14px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:Outfit,sans-serif;max-width:340px;width:calc(100% - 32px);';
+  b.innerHTML = '<span style="font-size:26px;flex-shrink:0">🔐</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#eeeef5;margin-bottom:2px">Tambah ke Layar Beranda</div><div style="font-size:11px;color:#9294ae">Buka Vault seperti app, tanpa browser</div></div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0"><button onclick="doInstall()" style="background:linear-gradient(135deg,#f0a500,#ffcc44);color:#000;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif">Install</button><button onclick="dismissBanner()" style="background:none;color:#6b6d85;border:none;font-size:11px;cursor:pointer;font-family:Outfit,sans-serif">Nanti</button></div>';
+  document.body.appendChild(b);
+}
+function doInstall() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(r => { if(r.outcome==='accepted') toast('✅ Vault ditambahkan ke beranda!'); deferredPrompt=null; dismissBanner(); });
+}
+function dismissBanner() { const b=document.getElementById('install-banner'); if(b) b.remove(); }
+
+// iOS Safari
+window.addEventListener('load', () => {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone;
+  if (isIOS && !isStandalone) {
+    setTimeout(() => {
+      if (document.getElementById('ios-banner')) return;
+      const b = document.createElement('div');
+      b.id = 'ios-banner';
+      b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e1f2e;border:1px solid #f0a500;border-radius:14px;padding:16px 18px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:Outfit,sans-serif;max-width:320px;width:calc(100% - 32px);';
+      b.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:13px;font-weight:700;color:#eeeef5">Tambah ke Beranda (iOS)</div><button onclick="this.closest(\'#ios-banner\').remove()" style="background:none;border:none;color:#6b6d85;font-size:20px;cursor:pointer;line-height:1">×</button></div><div style="font-size:12px;color:#9294ae;line-height:1.8">1. Tap ikon <strong style="color:#f0a500">Share ↑</strong> di Safari<br>2. Pilih <strong style="color:#f0a500">"Add to Home Screen"</strong><br>3. Tap <strong style="color:#f0a500">Add</strong></div>';
+      document.body.appendChild(b);
+    }, 3500);
+  }
+});
+</script>
