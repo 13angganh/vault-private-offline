@@ -102,7 +102,7 @@ body::before{
 /* ── SETUP SCREEN ── */
 #setup-screen{
   position:fixed;inset:0;
-  background:var(--bg);z-index:998;
+  background:var(--bg);z-index:1000;
   display:none;
   overflow-y:auto;
   padding:40px 20px;
@@ -812,11 +812,13 @@ let currentRecovery = [];
 // SETUP
 // ════════════════════════════════
 function showSetup() {
+  document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('setup-screen').style.display = 'block';
   regenRecovery();
 }
 function cancelSetup() {
   document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('lock-screen').style.display = 'flex';
 }
 function regenRecovery() {
   currentRecovery = genRecovery();
@@ -1393,6 +1395,100 @@ document.addEventListener('keydown',e=>{
 window.addEventListener('load',()=>{
   if (!masterPw) document.getElementById('no-vault-msg').style.display='block';
 });
+
+
+
+// ════════════════════════════════
+// INSTALL GUIDE
+// ════════════════════════════════
+function openInstallGuide() {
+  document.getElementById('modal-install').classList.add('open');
+  // Show auto-install button if prompt available
+  if (deferredPrompt) {
+    document.getElementById('install-auto').style.display = 'block';
+  }
+  // Auto-detect device
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isAndroid = /android/i.test(navigator.userAgent);
+  if (isIOS) setInstallTabByName('ios');
+  else if (isAndroid) setInstallTabByName('android');
+  else setInstallTabByName('pc');
+}
+
+function setInstallTab(name, btn) {
+  document.querySelectorAll('.install-tab').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = '#6b6d85';
+  });
+  btn.style.background = '#1e1f2e';
+  btn.style.color = '#eeeef5';
+  document.querySelectorAll('.install-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('tab-' + name).style.display = 'block';
+}
+
+function setInstallTabByName(name) {
+  const btn = document.querySelector(`[onclick="setInstallTab('${name}',this)"]`);
+  if (btn) setInstallTab(name, btn);
+}
+
+// ════════════════════════════════
+// PWA — Service Worker + Install Banner
+// ════════════════════════════════
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/vault-private-offline/sw.js',{scope:'/vault-private-offline/'}).then(reg=>{
+    reg.onupdatefound = () => {
+      const newSW = reg.installing;
+      newSW.onstatechange = () => {
+        if(newSW.state==='installed'&&navigator.serviceWorker.controller){
+          toast('🔄 Update tersedia — refresh untuk memperbarui');
+        }
+      };
+    };
+  });
+  navigator.serviceWorker.addEventListener('message',e=>{
+    if(e.data&&e.data.type==='SW_UPDATED') location.reload();
+  });
+}
+
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  setTimeout(showInstallBanner, 2500);
+});
+window.addEventListener('appinstalled', () => { toast('✅ Vault berhasil diinstall!'); deferredPrompt=null; });
+
+function showInstallBanner() {
+  if (!deferredPrompt || window.matchMedia('(display-mode: standalone)').matches) return;
+  if (document.getElementById('install-banner')) return;
+  const b = document.createElement('div');
+  b.id = 'install-banner';
+  b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e1f2e;border:1px solid #f0a500;border-radius:14px;padding:14px 20px;display:flex;align-items:center;gap:14px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:Outfit,sans-serif;max-width:340px;width:calc(100% - 32px);';
+  b.innerHTML = '<span style="font-size:26px;flex-shrink:0">🔐</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#eeeef5;margin-bottom:2px">Tambah ke Layar Beranda</div><div style="font-size:11px;color:#9294ae">Buka Vault seperti app, tanpa browser</div></div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0"><button onclick="doInstall()" style="background:linear-gradient(135deg,#f0a500,#ffcc44);color:#000;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif">Install</button><button onclick="dismissBanner()" style="background:none;color:#6b6d85;border:none;font-size:11px;cursor:pointer;font-family:Outfit,sans-serif">Nanti</button></div>';
+  document.body.appendChild(b);
+}
+function doInstall() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(r => { if(r.outcome==='accepted') toast('✅ Vault ditambahkan ke beranda!'); deferredPrompt=null; dismissBanner(); });
+}
+function dismissBanner() { const b=document.getElementById('install-banner'); if(b) b.remove(); }
+
+// iOS Safari
+window.addEventListener('load', () => {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone;
+  if (isIOS && !isStandalone) {
+    setTimeout(() => {
+      if (document.getElementById('ios-banner')) return;
+      const b = document.createElement('div');
+      b.id = 'ios-banner';
+      b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e1f2e;border:1px solid #f0a500;border-radius:14px;padding:16px 18px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:Outfit,sans-serif;max-width:320px;width:calc(100% - 32px);';
+      b.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:13px;font-weight:700;color:#eeeef5">Tambah ke Beranda (iOS)</div><button onclick="this.closest(\'#ios-banner\').remove()" style="background:none;border:none;color:#6b6d85;font-size:20px;cursor:pointer;line-height:1">×</button></div><div style="font-size:12px;color:#9294ae;line-height:1.8">1. Tap ikon <strong style="color:#f0a500">Share ↑</strong> di Safari<br>2. Pilih <strong style="color:#f0a500">"Add to Home Screen"</strong><br>3. Tap <strong style="color:#f0a500">Add</strong></div>';
+      document.body.appendChild(b);
+    }, 3500);
+  }
+});
 </script>
 
 <!-- ══════════════════════════════════════
@@ -1521,99 +1617,6 @@ window.addEventListener('load',()=>{
 </div>
 </div>
 
+
 </body>
 </html>
-<script>
-
-// ════════════════════════════════
-// INSTALL GUIDE
-// ════════════════════════════════
-function openInstallGuide() {
-  document.getElementById('modal-install').classList.add('open');
-  // Show auto-install button if prompt available
-  if (deferredPrompt) {
-    document.getElementById('install-auto').style.display = 'block';
-  }
-  // Auto-detect device
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isAndroid = /android/i.test(navigator.userAgent);
-  if (isIOS) setInstallTabByName('ios');
-  else if (isAndroid) setInstallTabByName('android');
-  else setInstallTabByName('pc');
-}
-
-function setInstallTab(name, btn) {
-  document.querySelectorAll('.install-tab').forEach(b => {
-    b.style.background = 'transparent';
-    b.style.color = '#6b6d85';
-  });
-  btn.style.background = '#1e1f2e';
-  btn.style.color = '#eeeef5';
-  document.querySelectorAll('.install-panel').forEach(p => p.style.display = 'none');
-  document.getElementById('tab-' + name).style.display = 'block';
-}
-
-function setInstallTabByName(name) {
-  const btn = document.querySelector(`[onclick="setInstallTab('${name}',this)"]`);
-  if (btn) setInstallTab(name, btn);
-}
-
-// ════════════════════════════════
-// PWA — Service Worker + Install Banner
-// ════════════════════════════════
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/vault-private-offline/sw.js',{scope:'/vault-private-offline/'}).then(reg=>{
-    reg.onupdatefound = () => {
-      const newSW = reg.installing;
-      newSW.onstatechange = () => {
-        if(newSW.state==='installed'&&navigator.serviceWorker.controller){
-          toast('🔄 Update tersedia — refresh untuk memperbarui');
-        }
-      };
-    };
-  });
-  navigator.serviceWorker.addEventListener('message',e=>{
-    if(e.data&&e.data.type==='SW_UPDATED') location.reload();
-  });
-}
-
-let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  deferredPrompt = e;
-  setTimeout(showInstallBanner, 2500);
-});
-window.addEventListener('appinstalled', () => { toast('✅ Vault berhasil diinstall!'); deferredPrompt=null; });
-
-function showInstallBanner() {
-  if (!deferredPrompt || window.matchMedia('(display-mode: standalone)').matches) return;
-  if (document.getElementById('install-banner')) return;
-  const b = document.createElement('div');
-  b.id = 'install-banner';
-  b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e1f2e;border:1px solid #f0a500;border-radius:14px;padding:14px 20px;display:flex;align-items:center;gap:14px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:Outfit,sans-serif;max-width:340px;width:calc(100% - 32px);';
-  b.innerHTML = '<span style="font-size:26px;flex-shrink:0">🔐</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#eeeef5;margin-bottom:2px">Tambah ke Layar Beranda</div><div style="font-size:11px;color:#9294ae">Buka Vault seperti app, tanpa browser</div></div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0"><button onclick="doInstall()" style="background:linear-gradient(135deg,#f0a500,#ffcc44);color:#000;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif">Install</button><button onclick="dismissBanner()" style="background:none;color:#6b6d85;border:none;font-size:11px;cursor:pointer;font-family:Outfit,sans-serif">Nanti</button></div>';
-  document.body.appendChild(b);
-}
-function doInstall() {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  deferredPrompt.userChoice.then(r => { if(r.outcome==='accepted') toast('✅ Vault ditambahkan ke beranda!'); deferredPrompt=null; dismissBanner(); });
-}
-function dismissBanner() { const b=document.getElementById('install-banner'); if(b) b.remove(); }
-
-// iOS Safari
-window.addEventListener('load', () => {
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isStandalone = window.navigator.standalone;
-  if (isIOS && !isStandalone) {
-    setTimeout(() => {
-      if (document.getElementById('ios-banner')) return;
-      const b = document.createElement('div');
-      b.id = 'ios-banner';
-      b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e1f2e;border:1px solid #f0a500;border-radius:14px;padding:16px 18px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:Outfit,sans-serif;max-width:320px;width:calc(100% - 32px);';
-      b.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:13px;font-weight:700;color:#eeeef5">Tambah ke Beranda (iOS)</div><button onclick="this.closest(\'#ios-banner\').remove()" style="background:none;border:none;color:#6b6d85;font-size:20px;cursor:pointer;line-height:1">×</button></div><div style="font-size:12px;color:#9294ae;line-height:1.8">1. Tap ikon <strong style="color:#f0a500">Share ↑</strong> di Safari<br>2. Pilih <strong style="color:#f0a500">"Add to Home Screen"</strong><br>3. Tap <strong style="color:#f0a500">Add</strong></div>';
-      document.body.appendChild(b);
-    }, 3500);
-  }
-});
-</script>
