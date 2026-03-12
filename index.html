@@ -403,6 +403,21 @@ select option{background:var(--s2);}
   .seed-grid.g12,.seed-grid.g24{grid-template-columns:repeat(3,1fr);}
   .seed-inputs.s24{grid-template-columns:repeat(3,1fr);}
 }
+
+/* ── PIN Pad ── */
+.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid #3a3b52;background:transparent;transition:all .2s;}
+.pin-dot.filled{background:#f0a500;border-color:#f0a500;transform:scale(1.1);}
+.pin-dot.shake{animation:pinshake .4s ease;}
+@keyframes pinshake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.pin-key{
+  background:#0e0f1a;border:1px solid #2b2d42;border-radius:14px;
+  color:#eeeef5;font-family:Outfit,sans-serif;font-size:22px;font-weight:600;
+  padding:18px 10px;cursor:pointer;transition:all .12s;user-select:none;
+}
+.pin-key:active,.pin-key:hover{background:#1e1f2e;border-color:#f0a500;color:#f0a500;transform:scale(.95);}
+.pin-key-fn{font-size:16px;color:#9294ae;}
+.pin-key-fn:active,.pin-key-fn:hover{color:#ff4d6d;border-color:#ff4d6d;}
+
 </style>
 </head>
 <body>
@@ -419,20 +434,63 @@ select option{background:var(--s2);}
   <div class="lock-subtitle">Pencatat akun terenkripsi · Sepenuhnya offline</div>
 
   <div class="lock-box">
-    <div class="lock-tabs">
-      <button class="lock-tab active" onclick="setLockTab('unlock',this)">🔓 Buka Vault</button>
-      <button class="lock-tab" onclick="setLockTab('recover',this)">🗝️ Recovery</button>
+
+    <!-- ── PANEL PIN (default jika vault ada) ── -->
+    <div id="panel-pin">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:36px;margin-bottom:8px;">🔐</div>
+        <div style="font-size:16px;font-weight:700;color:#eeeef5;">Masukkan PIN</div>
+        <div id="pin-subtitle" style="font-size:12px;color:#9294ae;margin-top:4px;">PIN 6 digit untuk membuka Vault</div>
+      </div>
+      <!-- PIN dots display -->
+      <div style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;" id="pin-dots">
+        <div class="pin-dot" id="pd0"></div>
+        <div class="pin-dot" id="pd1"></div>
+        <div class="pin-dot" id="pd2"></div>
+        <div class="pin-dot" id="pd3"></div>
+        <div class="pin-dot" id="pd4"></div>
+        <div class="pin-dot" id="pd5"></div>
+      </div>
+      <!-- PIN numpad -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;" id="pin-pad">
+        <button class="pin-key" onclick="pinInput(1)">1</button>
+        <button class="pin-key" onclick="pinInput(2)">2</button>
+        <button class="pin-key" onclick="pinInput(3)">3</button>
+        <button class="pin-key" onclick="pinInput(4)">4</button>
+        <button class="pin-key" onclick="pinInput(5)">5</button>
+        <button class="pin-key" onclick="pinInput(6)">6</button>
+        <button class="pin-key" onclick="pinInput(7)">7</button>
+        <button class="pin-key" onclick="pinInput(8)">8</button>
+        <button class="pin-key" onclick="pinInput(9)">9</button>
+        <button class="pin-key pin-key-fn" onclick="pinClear()">✕</button>
+        <button class="pin-key" onclick="pinInput(0)">0</button>
+        <button class="pin-key pin-key-fn" onclick="pinDelete()">⌫</button>
+      </div>
+      <div id="pin-err" style="font-size:12px;color:var(--red);text-align:center;margin-bottom:12px;display:none;min-height:18px;"></div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="showMasterPwFallback()">🔑 Lupa PIN? Gunakan Master Password</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;" onclick="showSetup()">✨ Setup Baru</button>
+          <label class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;cursor:pointer;">
+            📤 Impor
+            <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
+          </label>
+        </div>
+      </div>
     </div>
 
-    <!-- Unlock panel -->
-    <div id="panel-unlock">
+    <!-- ── PANEL MASTER PASSWORD (fallback / no PIN) ── -->
+    <div id="panel-unlock" style="display:none;">
       <div id="no-vault-msg" style="display:none;margin-bottom:16px;">
         <div style="background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--gold2);line-height:1.6;">
           ⚠️ Belum ada vault. Klik <strong>Setup Vault Baru</strong> untuk memulai, atau impor file backup yang ada.
         </div>
       </div>
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:600;color:#eeeef5;">Master Password</div>
+        <div style="font-size:12px;color:#9294ae;margin-top:2px;">Gunakan master password untuk membuka vault</div>
+      </div>
       <div class="fg">
-        <label class="flbl">Master Password</label>
         <div class="pw-wrap">
           <input type="password" id="unlock-pw" placeholder="Masukkan master password..." onkeydown="if(event.key==='Enter')unlockVault()">
           <button class="pwtog" onclick="togglePw('unlock-pw',this)">👁️</button>
@@ -440,32 +498,42 @@ select option{background:var(--s2);}
         <div id="unlock-err" style="font-size:12px;color:var(--red);margin-top:6px;display:none;"></div>
       </div>
       <button class="btn btn-gold" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="unlockVault()">🔓 Buka Vault</button>
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="showSetup()">✨ Setup Vault Baru</button>
-      <label class="btn btn-ghost" style="width:100%;justify-content:center;cursor:pointer;">
-        📤 Impor File Vault
-        <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
-      </label>
+      <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-bottom:8px;" onclick="showPinPanel()">← Kembali ke PIN</button>
+
+      <div class="lock-tabs" style="margin-top:8px;">
+        <button class="lock-tab active" onclick="setLockTab('unlock',this)">🔑 Master PW</button>
+        <button class="lock-tab" onclick="setLockTab('recover',this)">🗝️ Recovery</button>
+      </div>
+
+      <!-- Recovery panel (inside master pw panel) -->
+      <div id="panel-recover" style="display:none;margin-top:12px;">
+        <div style="background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(255,150,150,.8);margin-bottom:16px;line-height:1.6;">
+          ⚠️ Recovery akan <strong>mereset master password</strong>. Data tetap aman tapi kamu harus set password baru.
+        </div>
+        <div class="fg">
+          <label class="flbl">5 Recovery Words (pisahkan spasi)</label>
+          <input type="text" id="recovery-input" placeholder="kata1 kata2 kata3 kata4 kata5" style="font-family:var(--mono);">
+        </div>
+        <div class="fg">
+          <label class="flbl">Master Password Baru</label>
+          <div class="pw-wrap">
+            <input type="password" id="recovery-newpw" placeholder="Password baru...">
+            <button class="pwtog" onclick="togglePw('recovery-newpw',this)">👁️</button>
+          </div>
+        </div>
+        <div id="recover-err" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none;"></div>
+        <button class="btn btn-danger" style="width:100%;justify-content:center;" onclick="doRecovery()">🗝️ Reset & Masuk</button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;" onclick="showSetup()">✨ Setup Baru</button>
+        <label class="btn btn-ghost btn-sm" style="flex:1;justify-content:center;cursor:pointer;">
+          📤 Impor
+          <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
+        </label>
+      </div>
     </div>
 
-    <!-- Recovery panel -->
-    <div id="panel-recover" style="display:none;">
-      <div style="background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(255,150,150,.8);margin-bottom:16px;line-height:1.6;">
-        ⚠️ Recovery akan <strong>mereset master password</strong>. Data tetap aman tapi kamu harus set password baru.
-      </div>
-      <div class="fg">
-        <label class="flbl">5 Recovery Words (pisahkan spasi)</label>
-        <input type="text" id="recovery-input" placeholder="kata1 kata2 kata3 kata4 kata5" style="font-family:var(--mono);">
-      </div>
-      <div class="fg">
-        <label class="flbl">Master Password Baru</label>
-        <div class="pw-wrap">
-          <input type="password" id="recovery-newpw" placeholder="Password baru...">
-          <button class="pwtog" onclick="togglePw('recovery-newpw',this)">👁️</button>
-        </div>
-      </div>
-      <div id="recover-err" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none;"></div>
-      <button class="btn btn-danger" style="width:100%;justify-content:center;" onclick="doRecovery()">🗝️ Reset & Masuk</button>
-    </div>
   </div>
 </div>
 
@@ -489,8 +557,12 @@ select option{background:var(--s2);}
           <input type="password" id="setup-pw" placeholder="Buat master password kuat..." oninput="updateSetupStr()">
           <button class="pwtog" onclick="togglePw('setup-pw',this)">👁️</button>
         </div>
-        <div class="str-bar"><div class="str-fill" id="setup-str-fill" style="width:0%"></div></div>
-        <div id="setup-str-label" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+        <div class="str-bar" style="height:6px;border-radius:3px;"><div class="str-fill" id="setup-str-fill" style="width:0%;height:100%;border-radius:3px;transition:width .3s,background .3s;"></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;">
+          <div id="setup-str-label" style="font-size:11px;font-weight:600;"></div>
+          <div id="setup-str-entropy" style="font-size:10px;color:var(--muted);font-family:var(--mono);"></div>
+        </div>
+        <div id="setup-str-tips" style="margin-top:6px;line-height:1.8;"></div>
       </div>
       <div class="fg">
         <input type="password" id="setup-pw2" placeholder="Ulangi master password...">
@@ -755,30 +827,69 @@ select option{background:var(--s2);}
 // ════════════════════════════════
 // CRYPTO UTILS (AES-GCM via WebCrypto)
 // ════════════════════════════════
+// ── Enhanced KDF: PBKDF2 dua lapis (SHA-256 + SHA-512) dengan 600k iterasi
+// Tanpa library eksternal — 100% WebCrypto API bawaan browser
+// Efek: ~2x lebih lambat dari sebelumnya, SHA-512 lebih susah di GPU AMD/NVIDIA
+// Untuk password 12+ karakter: praktis tidak bisa di-brute-force dalam waktu manusia
+//
+// Format versi: byte[0] = 0xAB (enhanced), lainnya = legacy
+const VER_ENHANCED = 0xAB;
+
 const ENC = {
-  async deriveKey(password, salt) {
-    const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-    return crypto.subtle.deriveKey(
-      { name:'PBKDF2', salt, iterations:310000, hash:'SHA-256' },
-      keyMaterial, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
-    );
+  // ── Enhanced double-PBKDF2: SHA-256 layer 1 (600k) → SHA-512 layer 2 (100k)
+  async deriveKey(password, salt, enhanced = true) {
+    const enc  = new TextEncoder();
+    const pwBuf = enc.encode(password);
+
+    if (enhanced) {
+      // Layer 1: PBKDF2-SHA256 @ 600k iterations
+      const km1 = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveBits']);
+      const bits1 = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
+        km1, 256
+      );
+      // Layer 2: PBKDF2-SHA512 @ 100k iterations — input: output layer 1
+      // salt untuk layer 2: HKDF-expand dari salt asal (deterministik)
+      const salt2 = new Uint8Array(await crypto.subtle.digest('SHA-256',
+        new Uint8Array([...salt, ...new Uint8Array(bits1)])));
+      const km2 = await crypto.subtle.importKey('raw', bits1, 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: salt2, iterations: 100000, hash: 'SHA-512' },
+        km2, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+      );
+    } else {
+      // Legacy: PBKDF2-SHA256 @ 310k (baca data lama)
+      const km = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' },
+        km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+      );
+    }
   },
+
   async encrypt(plaintext, password) {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv   = crypto.getRandomValues(new Uint8Array(12));
-    const key  = await this.deriveKey(password, salt);
-    const enc  = new TextEncoder();
-    const ct   = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, enc.encode(plaintext));
-    const buf  = new Uint8Array(salt.byteLength + iv.byteLength + ct.byteLength);
-    buf.set(salt, 0); buf.set(iv, 16); buf.set(new Uint8Array(ct), 28);
+    const key  = await this.deriveKey(password, salt, true);
+    const ct   = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
+    // Format: [ver(1)=0xAB] [salt(16)] [iv(12)] [ciphertext]
+    const buf  = new Uint8Array(1 + 16 + 12 + ct.byteLength);
+    buf[0] = VER_ENHANCED;
+    buf.set(salt, 1); buf.set(iv, 17);
+    buf.set(new Uint8Array(ct), 29);
     return btoa(String.fromCharCode(...buf));
   },
+
   async decrypt(b64, password) {
-    const buf  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    const salt = buf.slice(0,16), iv = buf.slice(16,28), ct = buf.slice(28);
-    const key  = await this.deriveKey(password, salt);
-    const pt   = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+    const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const ver = buf[0];
+    const enhanced = (ver === VER_ENHANCED);
+    const offset   = enhanced ? 1 : 0;
+    const salt = buf.slice(offset, offset + 16);
+    const iv   = buf.slice(offset + 16, offset + 28);
+    const ct   = buf.slice(offset + 28);
+    const key  = await this.deriveKey(password, salt, enhanced);
+    const pt   = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
     return new TextDecoder().decode(pt);
   }
 };
@@ -842,23 +953,78 @@ function regenRecovery() {
   `).join('');
   document.getElementById('rec-confirm').checked = false;
 }
+function scorePassword(pw) {
+  // Returns {score:0-7, level:'...', color:'...', tips:[...], entropy:N}
+  const tips = [];
+  let score = 0;
+
+  // Length scoring (bobot terbesar)
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (pw.length >= 16) score++;
+  if (pw.length >= 20) score++;
+  if (pw.length < 8)   tips.push('Minimal 8 karakter');
+  else if (pw.length < 12) tips.push('Tambah hingga 12+ karakter');
+  else if (pw.length < 16) tips.push('16+ karakter = sangat kuat');
+
+  // Complexity scoring
+  if (/[A-Z]/.test(pw)) score++; else tips.push('Tambah huruf besar (A-Z)');
+  if (/[0-9]/.test(pw)) score++; else tips.push('Tambah angka (0-9)');
+  if (/[^A-Za-z0-9]/.test(pw)) score++; else tips.push('Tambah simbol (!@#$...)');
+
+  // Penalti pola umum
+  const common = ['password','123456','qwerty','abc123','iloveyou','admin','letmein','monkey','dragon','master'];
+  if (common.some(c => pw.toLowerCase().includes(c))) { score = Math.max(0, score-3); tips.push('Hindari kata umum'); }
+  if (/(.){2,}/.test(pw)) { score = Math.max(0, score-1); tips.push('Hindari karakter berulang'); }
+  if (/^[0-9]+$/.test(pw)) { score = Math.max(0, score-2); tips.push('Jangan angka saja'); }
+
+  // Hitung entropy (estimasi)
+  let pool = 0;
+  if (/[a-z]/.test(pw)) pool += 26;
+  if (/[A-Z]/.test(pw)) pool += 26;
+  if (/[0-9]/.test(pw)) pool += 10;
+  if (/[^A-Za-z0-9]/.test(pw)) pool += 32;
+  const entropy = pool > 0 ? Math.floor(pw.length * Math.log2(pool)) : 0;
+
+  score = Math.max(0, Math.min(7, score));
+  const levels = [
+    {l:'Sangat Lemah', c:'#ff4d6d'},
+    {l:'Sangat Lemah', c:'#ff4d6d'},
+    {l:'Lemah',        c:'#ff7043'},
+    {l:'Sedang',       c:'#ffd166'},
+    {l:'Cukup',        c:'#a8d8a8'},
+    {l:'Kuat',         c:'#00d4aa'},
+    {l:'Sangat Kuat',  c:'#06d6a0'},
+    {l:'Luar Biasa!',  c:'#00ffcc'},
+  ];
+  return { score, level: levels[score].l, color: levels[score].c, tips, entropy };
+}
+
 function updateSetupStr() {
   const pw = document.getElementById('setup-pw').value;
   const fill = document.getElementById('setup-str-fill');
-  const lbl = document.getElementById('setup-str-label');
-  let s = 0;
-  if (pw.length >= 8) s++;
-  if (pw.length >= 12) s++;
-  if (/[A-Z]/.test(pw)) s++;
-  if (/[0-9]/.test(pw)) s++;
-  if (/[^A-Za-z0-9]/.test(pw)) s++;
-  const pct = (s/5)*100;
-  const clrs = ['#ff4d6d','#ff7043','#ffd166','#00d4aa','#06d6a0'];
-  const lbls = ['Sangat Lemah','Lemah','Sedang','Kuat','Sangat Kuat'];
-  fill.style.width = pct+'%';
-  fill.style.background = pw ? clrs[Math.min(s-1,4)] : '';
-  lbl.textContent = pw ? lbls[Math.min(s-1,4)] : '';
-  lbl.style.color = pw ? clrs[Math.min(s-1,4)] : '';
+  const lbl  = document.getElementById('setup-str-label');
+  const tips = document.getElementById('setup-str-tips');
+  const ent  = document.getElementById('setup-str-entropy');
+
+  if (!pw) {
+    fill.style.width = '0%'; fill.style.background = '';
+    lbl.textContent = ''; tips.innerHTML = ''; 
+    if(ent) ent.textContent = '';
+    return;
+  }
+  const r = scorePassword(pw);
+  const pct = (r.score / 7) * 100;
+  fill.style.width = pct + '%';
+  fill.style.background = r.color;
+  lbl.textContent = r.level;
+  lbl.style.color = r.color;
+  if (ent) ent.textContent = '~' + r.entropy + ' bit entropy';
+  if (tips) {
+    tips.innerHTML = r.tips.length 
+      ? r.tips.map(t => `<span style="display:inline-block;background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.2);border-radius:4px;padding:2px 8px;font-size:10px;color:#ff8fa3;margin:2px 2px 0 0;">⚠ ${t}</span>`).join('')
+      : '<span style="font-size:11px;color:#00d4aa;">✓ Password kuat!</span>';
+  }
 }
 async function finishSetup() {
   const pw   = document.getElementById('setup-pw').value;
@@ -867,20 +1033,21 @@ async function finishSetup() {
   const err  = document.getElementById('setup-err');
   err.style.display = 'none';
   if (!pw) { showSetupErr('Master password wajib diisi.'); return; }
+  // Enforce minimum strength
+  const pwScore = scorePassword(pw);
+  if (pw.length < 12) { showSetupErr('Master password minimal 12 karakter. Ingat: kamu bisa buka sehari-hari pakai PIN!'); return; }
+  if (pwScore.score < 3) { showSetupErr('Password terlalu lemah. Tambah huruf besar, angka, atau simbol.'); return; }
   if (pw !== pw2) { showSetupErr('Password tidak cocok.'); return; }
   if (!document.getElementById('rec-confirm').checked) { showSetupErr('Konfirmasi bahwa kamu sudah mencatat recovery phrase.'); return; }
   // Hash recovery for verification
   const recStr = currentRecovery.join(' ');
   const recHash = await hashStr(recStr);
-  vaultMeta = { hint, recoveryHash: recHash, recovery: recStr }; // store plain for demo; ideally encrypt too
+  vaultMeta = { hint, recoveryHash: recHash, recovery: recStr };
   masterPw = pw;
   vault = [];
   document.getElementById('setup-screen').style.display = 'none';
-  document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  render();
-  toast('✅ Vault berhasil dibuat!');
-  if (autoLockMinutes > 0) scheduleAutoLock();
+  // Ask for PIN setup
+  setupPinAfterVaultCreation();
 }
 function showSetupErr(msg) {
   const el = document.getElementById('setup-err');
@@ -896,42 +1063,40 @@ function setLockTab(name, btn) {
   document.getElementById('panel-unlock').style.display = name==='unlock'?'block':'none';
   document.getElementById('panel-recover').style.display = name==='recover'?'block':'none';
 }
-function unlockVault() {
-  const pw = document.getElementById('unlock-pw').value;
+async function unlockVault() {
+  const pw = document.getElementById('unlock-pw').value.trim();
   const err = document.getElementById('unlock-err');
   if (!pw) { showUnlockErr('Masukkan master password.'); return; }
-  if (!masterPw) {
-    // Try to load from localStorage
-    loadFromLocal().then(async (saved) => {
-      if (saved) {
-        try {
-          const dec = await ENC.decrypt(saved.data, pw);
-          const data = JSON.parse(dec);
-          vault = data.vault || [];
-          vaultMeta = data.meta || {};
-          masterPw = pw;
-          err.style.display = 'none';
-          document.getElementById('lock-screen').style.display = 'none';
-          document.getElementById('main-app').style.display = 'block';
-          render();
-          if (autoLockMinutes > 0) scheduleAutoLock();
-          toast('✅ Vault dibuka dari data tersimpan lokal!');
-        } catch(e) {
-          showUnlockErr('Password salah.');
-        }
+  err.style.display = 'none';
+
+  // Try to load from localStorage with this password
+  const saved = await loadFromLocal();
+  if (saved) {
+    try {
+      const dec = await ENC.decrypt(saved.data, pw);
+      const data = JSON.parse(dec);
+      vault = data.vault || [];
+      vaultMeta = data.meta || {};
+      masterPw = pw;
+      // If no PIN yet, offer to create one
+      if (!hasPin()) {
+        setupPinAfterVaultCreation();
       } else {
-        document.getElementById('no-vault-msg').style.display = 'block';
-        err.style.display = 'none';
+        openVaultAfterAuth();
+        toast('✅ Vault dibuka!');
       }
-    });
+      return;
+    } catch(e) {
+      showUnlockErr('Master password salah.');
+      return;
+    }
+  }
+  // No saved data — if masterPw matches (in-memory session)
+  if (masterPw && pw === masterPw) {
+    openVaultAfterAuth();
     return;
   }
-  if (pw !== masterPw) { showUnlockErr('Password salah. Coba lagi.'); return; }
-  err.style.display = 'none';
-  document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  render();
-  if (autoLockMinutes > 0) scheduleAutoLock();
+  showUnlockErr('Master password salah atau belum ada vault.');
 }
 function showUnlockErr(msg) {
   const el = document.getElementById('unlock-err');
@@ -945,7 +1110,15 @@ function lockApp() {
   document.getElementById('lock-screen').style.display = 'flex';
   document.getElementById('unlock-pw').value = '';
   document.getElementById('unlock-err').style.display = 'none';
+  document.getElementById('no-vault-msg').style.display = 'none'; // Fix: hide this on lock
   expandedIds.clear(); pwVisible.clear(); seedVisible.clear();
+  // Show PIN panel if PIN exists, else master pw
+  if (hasPin()) {
+    showPinPanel();
+  } else {
+    document.getElementById('panel-pin').style.display = 'none';
+    document.getElementById('panel-unlock').style.display = 'block';
+  }
 }
 async function doRecovery() {
   const recInput = document.getElementById('recovery-input').value.trim().toLowerCase();
@@ -957,10 +1130,10 @@ async function doRecovery() {
   if (!vaultMeta.recovery) { err.textContent='Tidak ada vault yang bisa di-recover.'; err.style.display='block'; return; }
   if (recInput !== vaultMeta.recovery) { err.textContent='Recovery phrase salah.'; err.style.display='block'; return; }
   masterPw = newPw;
-  document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  render();
-  toast('✅ Password berhasil direset!');
+  // Clear old PIN — force new PIN setup
+  localStorage.removeItem(LS_PIN);
+  setupPinAfterVaultCreation();
+  toast('✅ Password berhasil direset! Buat PIN baru.');
 }
 
 // ════════════════════════════════
@@ -1434,6 +1607,221 @@ document.addEventListener('keydown',e=>{
 });
 
 // ════════════════════════════════
+// PIN SETUP FLOW (setelah vault dibuat / master pw login tanpa PIN)
+// ════════════════════════════════
+let pinSetupBuffer = [];
+let pinSetupStep = 1; // 1=enter, 2=confirm
+let pinSetupFirst = '';
+
+function setupPinAfterVaultCreation() {
+  pinSetupBuffer = []; pinSetupFirst = ''; pinSetupStep = 1;
+  document.getElementById('pin-setup-overlay').style.display = 'flex';
+  updatePinSetupDots();
+  document.getElementById('pin-setup-title').textContent = 'Buat PIN (6 digit)';
+  document.getElementById('pin-setup-subtitle').textContent = 'PIN digunakan untuk membuka vault dengan cepat';
+  document.getElementById('pin-setup-err').style.display = 'none';
+}
+
+function pinSetupInput(digit) {
+  if (pinSetupBuffer.length >= 6) return;
+  pinSetupBuffer.push(digit);
+  updatePinSetupDots();
+  if (pinSetupBuffer.length === 6) setTimeout(() => submitPinSetup(), 120);
+}
+
+function pinSetupDelete() { pinSetupBuffer.pop(); updatePinSetupDots(); }
+function pinSetupClear() { pinSetupBuffer = []; updatePinSetupDots(); }
+
+function updatePinSetupDots() {
+  for (let i = 0; i < 6; i++) {
+    const d = document.getElementById('psd' + i);
+    if (d) d.className = 'pin-dot' + (i < pinSetupBuffer.length ? ' filled' : '');
+  }
+}
+
+async function submitPinSetup() {
+  const pinStr = pinSetupBuffer.join('');
+  pinSetupBuffer = []; updatePinSetupDots();
+
+  if (pinSetupStep === 1) {
+    pinSetupFirst = pinStr;
+    pinSetupStep = 2;
+    document.getElementById('pin-setup-title').textContent = 'Konfirmasi PIN';
+    document.getElementById('pin-setup-subtitle').textContent = 'Masukkan PIN yang sama sekali lagi';
+    document.getElementById('pin-setup-err').style.display = 'none';
+  } else {
+    if (pinStr !== pinSetupFirst) {
+      // Mismatch — restart
+      pinSetupStep = 1; pinSetupFirst = '';
+      document.getElementById('pin-setup-title').textContent = 'Buat PIN (6 digit)';
+      document.getElementById('pin-setup-subtitle').textContent = 'PIN tidak cocok, coba lagi';
+      document.getElementById('pin-setup-err').textContent = '❌ PIN tidak cocok, mulai ulang';
+      document.getElementById('pin-setup-err').style.display = 'block';
+      return;
+    }
+    // Save PIN
+    const ok = await savePin(pinStr, masterPw);
+    document.getElementById('pin-setup-overlay').style.display = 'none';
+    document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    render();
+    if (autoLockMinutes > 0) scheduleAutoLock();
+    if (ok) {
+      toast('✅ Vault dibuat! PIN tersimpan.');
+      if (autoSaveEnabled) scheduleAutoSave();
+    } else {
+      toast('✅ Vault dibuat! (PIN gagal disimpan)');
+    }
+  }
+}
+
+function skipPinSetup() {
+  document.getElementById('pin-setup-overlay').style.display = 'none';
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  render();
+  if (autoLockMinutes > 0) scheduleAutoLock();
+  toast('✅ Vault berhasil dibuat!');
+  if (autoSaveEnabled) scheduleAutoSave();
+}
+
+// ════════════════════════════════
+// PIN SYSTEM
+// ════════════════════════════════
+const LS_PIN = 'vault_pin'; // stores encrypted PIN hash
+let pinBuffer = [];
+let pinAttempts = 0;
+let pinLocked = false;
+
+function pinInput(digit) {
+  if (pinLocked || pinBuffer.length >= 6) return;
+  pinBuffer.push(digit);
+  updatePinDots();
+  if (pinBuffer.length === 6) {
+    setTimeout(() => submitPin(), 120);
+  }
+}
+
+function pinDelete() {
+  if (pinLocked) return;
+  pinBuffer.pop();
+  updatePinDots();
+}
+
+function pinClear() {
+  pinBuffer = [];
+  updatePinDots();
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 6; i++) {
+    const dot = document.getElementById('pd' + i);
+    if (dot) dot.className = 'pin-dot' + (i < pinBuffer.length ? ' filled' : '');
+  }
+}
+
+async function submitPin() {
+  const pinStr = pinBuffer.join('');
+  pinBuffer = [];
+  updatePinDots();
+
+  // Check PIN against stored hash
+  const storedRaw = localStorage.getItem(LS_PIN);
+  if (!storedRaw) { showPinErr('PIN belum dikonfigurasi. Gunakan master password.'); return; }
+
+  try {
+    const stored = JSON.parse(storedRaw);
+    // PIN is stored as: encrypt(PIN, masterPw) — so we need to decrypt with pin to get masterPw
+    // Actually: we store hash of (PIN + salt), and separately encrypted(masterPw, PIN)
+    const pinHash = await hashStr(pinStr + stored.salt);
+    if (pinHash !== stored.hash) {
+      pinAttempts++;
+      if (pinAttempts >= 5) {
+        pinLocked = true;
+        showPinErr('Terlalu banyak percobaan. Gunakan master password.');
+        document.getElementById('pin-pad').style.opacity = '0.3';
+        document.getElementById('pin-pad').style.pointerEvents = 'none';
+      } else {
+        showPinErr('PIN salah. Sisa percobaan: ' + (5 - pinAttempts));
+        shakeDots();
+      }
+      return;
+    }
+    // PIN correct — decrypt masterPw
+    const decMaster = await ENC.decrypt(stored.encMaster, pinStr);
+    masterPw = decMaster;
+
+    // Load vault from localStorage
+    const saved = await loadFromLocal();
+    if (saved) {
+      try {
+        const dec = await ENC.decrypt(saved.data, masterPw);
+        const data = JSON.parse(dec);
+        vault = data.vault || [];
+        vaultMeta = data.meta || {};
+      } catch(e) {
+        showPinErr('Data vault rusak. Coba master password.');
+        return;
+      }
+    }
+    pinAttempts = 0;
+    openVaultAfterAuth();
+  } catch(e) {
+    showPinErr('Gagal verifikasi PIN: ' + e.message);
+  }
+}
+
+function showPinErr(msg) {
+  const el = document.getElementById('pin-err');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { if (el.textContent === msg) el.style.display = 'none'; }, 3000);
+}
+
+function shakeDots() {
+  document.querySelectorAll('.pin-dot').forEach(d => {
+    d.classList.add('shake');
+    setTimeout(() => d.classList.remove('shake'), 400);
+  });
+}
+
+async function savePin(pinStr, masterPassword) {
+  try {
+    const salt = crypto.getRandomValues(new Uint8Array(8));
+    const saltHex = Array.from(salt).map(b=>b.toString(16).padStart(2,'0')).join('');
+    const hash = await hashStr(pinStr + saltHex);
+    const encMaster = await ENC.encrypt(masterPassword, pinStr);
+    localStorage.setItem(LS_PIN, JSON.stringify({ hash, salt: saltHex, encMaster }));
+    return true;
+  } catch(e) { return false; }
+}
+
+function hasPin() {
+  return !!localStorage.getItem(LS_PIN);
+}
+
+function showPinPanel() {
+  document.getElementById('panel-pin').style.display = 'block';
+  document.getElementById('panel-unlock').style.display = 'none';
+  pinBuffer = []; updatePinDots();
+  document.getElementById('pin-err').style.display = 'none';
+}
+
+function showMasterPwFallback() {
+  document.getElementById('panel-pin').style.display = 'none';
+  document.getElementById('panel-unlock').style.display = 'block';
+  document.getElementById('no-vault-msg').style.display = 'none';
+}
+
+function openVaultAfterAuth() {
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  render();
+  if (autoLockMinutes > 0) scheduleAutoLock();
+}
+
+
+// ════════════════════════════════
 // AUTO-LOCK
 // ════════════════════════════════
 const ACTIVITY_EVENTS = ['mousedown','mousemove','keydown','touchstart','scroll','click'];
@@ -1624,18 +2012,26 @@ window.addEventListener('load', async () => {
   if (savedAutolock !== null) autoLockMinutes = parseInt(savedAutolock);
   const savedAutosave = localStorage.getItem('vault_autosave_enabled');
   if (savedAutosave === '0') autoSaveEnabled = false;
-  
+
   // Check if there's saved data in localStorage
   const saved = await loadFromLocal();
   if (saved) {
-    // Show hint if available
-    const hintEl = document.createElement('div');
-    hintEl.style.cssText = 'background:rgba(0,212,170,.07);border:1px solid rgba(0,212,170,.18);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(0,212,170,.8);margin-bottom:16px;line-height:1.6;';
-    hintEl.innerHTML = `💾 <strong>Data vault ditemukan!</strong> Masukkan master password untuk membuka.<br>${saved.hint ? `<span style="color:#6b6d85;font-size:11px;margin-top:4px;display:block;">Hint: ${saved.hint}</span>` : ''}`;
-    const panel = document.getElementById('panel-unlock');
-    panel.insertBefore(hintEl, panel.firstChild);
     document.getElementById('no-vault-msg').style.display = 'none';
+    // Show PIN pad if PIN is set, else show master pw panel
+    if (hasPin()) {
+      showPinPanel();
+      if (saved.hint) {
+        document.getElementById('pin-subtitle').textContent = saved.hint ? 'Vault ditemukan · Hint: ' + saved.hint : 'PIN 6 digit untuk membuka Vault';
+      }
+    } else {
+      document.getElementById('panel-pin').style.display = 'none';
+      document.getElementById('panel-unlock').style.display = 'block';
+      document.getElementById('no-vault-msg').style.display = 'none';
+    }
   } else {
+    // No vault — show setup options
+    document.getElementById('panel-pin').style.display = 'none';
+    document.getElementById('panel-unlock').style.display = 'block';
     document.getElementById('no-vault-msg').style.display = 'block';
   }
 });
@@ -1918,8 +2314,8 @@ window.addEventListener('load', () => {
   <!-- INFO -->
   <div style="background:#0e0f1a;border-radius:10px;padding:14px;">
     <div style="font-size:12px;color:#6b6d85;line-height:1.8;">
-      <div>🔐 Enkripsi: <span style="color:#9294ae;">AES-256-GCM + PBKDF2</span></div>
-      <div>📦 Vault v2.1</div>
+      <div>🔐 Enkripsi: <span style="color:#9294ae;">AES-256-GCM + PBKDF2×2 (600k+100k iter)</span></div>
+      <div>📦 Vault v3.0</div>
       <div style="margin-top:8px;font-size:11px;color:#4a4b5a;">⚠️ Auto-save menyimpan data terenkripsi di localStorage browser ini saja. Data tidak tersinkron ke perangkat lain — tetap gunakan Ekspor untuk backup.</div>
     </div>
   </div>
@@ -1928,6 +2324,47 @@ window.addEventListener('load', () => {
     <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-settings')">Tutup</button>
   </div>
 </div>
+</div>
+
+
+<!-- ══════════════════════════════════════
+     PIN SETUP OVERLAY
+══════════════════════════════════════ -->
+<div id="pin-setup-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1100;align-items:center;justify-content:center;flex-direction:column;padding:24px;">
+  <div style="width:100%;max-width:340px;">
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="font-size:40px;margin-bottom:10px;">🔢</div>
+      <div id="pin-setup-title" style="font-size:18px;font-weight:700;color:#eeeef5;">Buat PIN (6 digit)</div>
+      <div id="pin-setup-subtitle" style="font-size:12px;color:#9294ae;margin-top:6px;line-height:1.5;">PIN digunakan untuk membuka vault dengan cepat</div>
+    </div>
+    <!-- Dots -->
+    <div style="display:flex;justify-content:center;gap:12px;margin-bottom:28px;">
+      <div class="pin-dot" id="psd0"></div>
+      <div class="pin-dot" id="psd1"></div>
+      <div class="pin-dot" id="psd2"></div>
+      <div class="pin-dot" id="psd3"></div>
+      <div class="pin-dot" id="psd4"></div>
+      <div class="pin-dot" id="psd5"></div>
+    </div>
+    <!-- Error -->
+    <div id="pin-setup-err" style="font-size:12px;color:var(--red);text-align:center;margin-bottom:12px;display:none;min-height:18px;"></div>
+    <!-- Numpad -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+      <button class="pin-key" onclick="pinSetupInput(1)">1</button>
+      <button class="pin-key" onclick="pinSetupInput(2)">2</button>
+      <button class="pin-key" onclick="pinSetupInput(3)">3</button>
+      <button class="pin-key" onclick="pinSetupInput(4)">4</button>
+      <button class="pin-key" onclick="pinSetupInput(5)">5</button>
+      <button class="pin-key" onclick="pinSetupInput(6)">6</button>
+      <button class="pin-key" onclick="pinSetupInput(7)">7</button>
+      <button class="pin-key" onclick="pinSetupInput(8)">8</button>
+      <button class="pin-key" onclick="pinSetupInput(9)">9</button>
+      <button class="pin-key pin-key-fn" onclick="pinSetupClear()">✕</button>
+      <button class="pin-key" onclick="pinSetupInput(0)">0</button>
+      <button class="pin-key pin-key-fn" onclick="pinSetupDelete()">⌫</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="skipPinSetup()">Lewati, gunakan master password saja</button>
+  </div>
 </div>
 
 </body>
