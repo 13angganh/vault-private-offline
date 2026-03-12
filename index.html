@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vault v2 — Pencatat Akun Terenkripsi</title>
+<title>Vault v3 — Pencatat Akun Terenkripsi</title>
 
 <!-- PWA -->
 <meta name="theme-color" content="#f0a500"/>
@@ -418,6 +418,17 @@ select option{background:var(--s2);}
 .pin-key-fn{font-size:16px;color:#9294ae;}
 .pin-key-fn:active,.pin-key-fn:hover{color:#ff4d6d;border-color:#ff4d6d;}
 
+
+/* ── Category Manager ── */
+.cat-row{display:flex;align-items:center;gap:10px;background:#0e0f1a;border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+.cat-row-icon{font-size:22px;cursor:pointer;flex-shrink:0;width:32px;text-align:center;border-radius:8px;padding:2px;transition:background .15s;}
+.cat-row-icon:hover{background:#1e1f2e;}
+.cat-row-name{flex:1;font-size:13px;font-weight:600;color:#eeeef5;}
+.cat-row-btns{display:flex;gap:4px;flex-shrink:0;}
+.emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;max-height:200px;overflow-y:auto;}
+.emoji-btn{background:none;border:1px solid transparent;border-radius:6px;font-size:20px;padding:4px;cursor:pointer;transition:all .12s;}
+.emoji-btn:hover{background:#1e1f2e;border-color:#f0a500;}
+
 </style>
 </head>
 <body>
@@ -430,7 +441,7 @@ select option{background:var(--s2);}
 ══════════════════════════════════════ -->
 <div id="lock-screen">
   <div class="lock-logo">🔐</div>
-  <div class="lock-title">Vault <span style="color:var(--gold)">v2</span></div>
+  <div class="lock-title">Vault <span style="color:var(--gold)">v3</span></div>
   <div class="lock-subtitle">Pencatat akun terenkripsi · Sepenuhnya offline</div>
 
   <div class="lock-box">
@@ -608,7 +619,7 @@ select option{background:var(--s2);}
     <div class="logo">
       <div class="logo-icon">🔐</div>
       <div>
-        <div class="logo-name"><span>Vault</span><span class="logo-ver">v2</span></div>
+        <div class="logo-name"><span>Vault</span><span class="logo-ver">v3</span></div>
       </div>
     </div>
     <div class="header-actions">
@@ -619,6 +630,7 @@ select option{background:var(--s2);}
         <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
       </label>
       <button class="btn btn-ghost btn-sm" onclick="openInstallGuide()">📲 Install App</button>
+      <button class="btn btn-ghost btn-sm" onclick="openCatManager()">🏷️ Kategori</button>
       <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙️ Pengaturan</button>
       <button class="btn btn-danger btn-sm" onclick="lockApp()">🔒 Kunci</button>
       <button class="btn btn-gold btn-sm" onclick="openAdd()">+ Tambah</button>
@@ -643,14 +655,8 @@ select option{background:var(--s2);}
     </div>
   </div>
 
-  <div class="filter-bar">
-    <button class="flt on" onclick="setFilter('semua',this)">Semua</button>
-    <button class="flt" onclick="setFilter('sosmed',this)">📱 Sosmed</button>
-    <button class="flt" onclick="setFilter('email',this)">📧 Email</button>
-    <button class="flt" onclick="setFilter('bank',this)">🏦 Bank</button>
-    <button class="flt" onclick="setFilter('game',this)">🎮 Game</button>
-    <button class="flt" onclick="setFilter('crypto',this)">🪙 Crypto</button>
-    <button class="flt" onclick="setFilter('lainnya',this)">🗂️ Lainnya</button>
+  <div class="filter-bar" id="filter-bar">
+    <!-- Rendered by renderFilterBar() -->
   </div>
 
   <div class="cards" id="cards">
@@ -673,12 +679,7 @@ select option{background:var(--s2);}
   <div class="fg">
     <label class="flbl">Kategori</label>
     <select id="f-cat" onchange="onCatChange()">
-      <option value="sosmed">📱 Media Sosial</option>
-      <option value="email">📧 Email</option>
-      <option value="bank">🏦 Bank / Keuangan</option>
-      <option value="game">🎮 Game</option>
-      <option value="crypto">🪙 Crypto Wallet</option>
-      <option value="lainnya">🗂️ Lainnya</option>
+      <!-- Populated by populateCatSelect() -->
     </select>
   </div>
 
@@ -975,6 +976,7 @@ function scorePassword(pw) {
   // Penalti pola umum
   const common = ['password','123456','qwerty','abc123','iloveyou','admin','letmein','monkey','dragon','master'];
   if (common.some(c => pw.toLowerCase().includes(c))) { score = Math.max(0, score-3); tips.push('Hindari kata umum'); }
+  if (/(.)\1{2,}/.test(pw)) { score = Math.max(0, score-1); tips.push('Hindari karakter berulang (aaa, 111)'); }
   if (/(.){2,}/.test(pw)) { score = Math.max(0, score-1); tips.push('Hindari karakter berulang'); }
   if (/^[0-9]+$/.test(pw)) { score = Math.max(0, score-2); tips.push('Jangan angka saja'); }
 
@@ -1112,6 +1114,9 @@ function lockApp() {
   document.getElementById('unlock-err').style.display = 'none';
   document.getElementById('no-vault-msg').style.display = 'none'; // Fix: hide this on lock
   expandedIds.clear(); pwVisible.clear(); seedVisible.clear();
+  // Security: clear sensitive data from memory on lock
+  vault = [];
+  masterPw = '';
   // Show PIN panel if PIN exists, else master pw
   if (hasPin()) {
     showPinPanel();
@@ -1139,8 +1144,61 @@ async function doRecovery() {
 // ════════════════════════════════
 // RENDER
 // ════════════════════════════════
-const CAT_ICON  = {sosmed:'📱',email:'📧',bank:'🏦',game:'🎮',crypto:'🪙',lainnya:'🗂️'};
-const CAT_LABEL = {sosmed:'Sosmed',email:'Email',bank:'Bank',game:'Game',crypto:'Crypto',lainnya:'Lainnya'};
+// ── Dynamic Categories ──
+// Default categories — id fixed, label/icon editable, cannot delete
+const DEFAULT_CATS = [
+  { id:'sosmed', icon:'📱', label:'Sosmed',  editable:true,  deletable:false },
+  { id:'email',  icon:'📧', label:'Email',   editable:true,  deletable:false },
+  { id:'bank',   icon:'🏦', label:'Bank',    editable:true,  deletable:false },
+  { id:'game',   icon:'🎮', label:'Game',    editable:true,  deletable:false },
+  { id:'crypto', icon:'🪙', label:'Crypto',  editable:true,  deletable:false },
+  { id:'lainnya',icon:'🗂️', label:'Lainnya', editable:true,  deletable:false },
+];
+let categories = JSON.parse(JSON.stringify(DEFAULT_CATS)); // runtime copy
+
+function saveCats() {
+  try { localStorage.setItem('vault_cats', JSON.stringify(categories)); } catch(e){}
+}
+function loadCats() {
+  try {
+    const raw = localStorage.getItem('vault_cats');
+    if (raw) {
+      const saved = JSON.parse(raw);
+      // Merge: keep defaults intact, add custom ones
+      const defaultIds = DEFAULT_CATS.map(c=>c.id);
+      // Update default labels/icons from saved
+      DEFAULT_CATS.forEach(def => {
+        const s = saved.find(c=>c.id===def.id);
+        if (s) { def.label = s.label; def.icon = s.icon; }
+      });
+      categories = [
+        ...DEFAULT_CATS,
+        ...saved.filter(c=>!defaultIds.includes(c.id))
+      ];
+    }
+  } catch(e){}
+}
+
+// Helpers — replaces old CAT_ICON / CAT_LABEL
+function catIcon(id)  { return (categories.find(c=>c.id===id)||{icon:'🗂️'}).icon; }
+function catLabel(id) { return (categories.find(c=>c.id===id)||{label:id}).label; }
+// Dynamic CSS color for avatar/chip (cycle through palette for custom cats)
+const CAT_COLORS = [
+  'rgba(77,142,255,.12)','rgba(255,77,109,.12)','rgba(0,212,170,.12)',
+  'rgba(243,156,18,.12)','rgba(247,147,26,.12)','rgba(150,150,200,.12)',
+  'rgba(160,82,255,.12)','rgba(255,180,0,.12)','rgba(0,200,120,.12)',
+];
+const CHIP_COLORS = [
+  {bg:'rgba(77,142,255,.15)',fg:'#4d8eff'},{bg:'rgba(255,77,109,.15)',fg:'#ff4d6d'},
+  {bg:'rgba(0,212,170,.15)',fg:'#00d4aa'},{bg:'rgba(243,156,18,.15)',fg:'#f39c12'},
+  {bg:'rgba(247,147,26,.15)',fg:'#f7931a'},{bg:'rgba(150,150,200,.15)',fg:'#9294ae'},
+  {bg:'rgba(160,82,255,.15)',fg:'#a052ff'},{bg:'rgba(255,180,0,.15)',fg:'#ffb400'},
+  {bg:'rgba(0,200,120,.15)',fg:'#00c878'},
+];
+function catColorIdx(id) {
+  const idx = categories.findIndex(c=>c.id===id);
+  return idx >= 0 ? idx % CAT_COLORS.length : 5;
+}
 
 function render() {
   const q = (document.getElementById('search-input')||{value:''}).value.toLowerCase();
@@ -1160,6 +1218,7 @@ function render() {
   grid.querySelectorAll('.card').forEach(c=>c.remove());
   empty.style.display = filtered.length===0 ? 'block' : 'none';
 
+  renderFilterBar();
   filtered.forEach(e => {
     const card = document.createElement('div');
     card.className = 'card' + (e.cat==='crypto'?' crypto-card':'');
@@ -1174,9 +1233,9 @@ function render() {
       : (e.user||'');
 
     card.innerHTML = `
-      <div class="avatar av-${e.cat}">${CAT_ICON[e.cat]}</div>
+      <div class="avatar" style="background:${CAT_COLORS[catColorIdx(e.cat)]}">${catIcon(e.cat)}</div>
       <div class="card-info">
-        <div class="card-name">${esc(e.name)}<span class="chip chip-${e.cat}">${CAT_LABEL[e.cat]}</span></div>
+        <div class="card-name">${esc(e.name)}<span class="chip" style="background:${CHIP_COLORS[catColorIdx(e.cat)].bg};color:${CHIP_COLORS[catColorIdx(e.cat)].fg}">${catIcon(e.cat)} ${catLabel(e.cat)}</span></div>
         <div class="card-sub">${esc(sub)}</div>
       </div>
       <div class="card-btns">
@@ -1271,9 +1330,7 @@ function toggleSeedView(id) {
 
 function setFilter(f, btn) {
   currentFilter = f;
-  document.querySelectorAll('.flt').forEach(b=>b.classList.remove('on'));
-  btn.classList.add('on');
-  render();
+  render(); // render() already calls renderFilterBar()
 }
 document.getElementById('search-input') && document.getElementById('search-input').addEventListener('input', render);
 
@@ -1286,8 +1343,8 @@ function openEntryModal(entry) {
   document.getElementById('me-icon').textContent = entry ? '✏️' : '➕';
   document.getElementById('me-title').textContent = entry ? 'Edit Akun' : 'Tambah Akun';
 
-  const cat = entry ? entry.cat : 'sosmed';
-  document.getElementById('f-cat').value = cat;
+  const cat = entry ? entry.cat : (categories[0]?.id || 'sosmed');
+  populateCatSelect(cat);
   document.getElementById('f-name').value = entry ? entry.name : '';
   document.getElementById('f-user').value = entry ? (entry.user||'') : '';
   document.getElementById('f-pass').value = entry ? (entry.pass||'') : '';
@@ -1593,14 +1650,14 @@ function toast(msg) {
 }
 
 // Modal close on overlay click
-['modal-entry','modal-sync','modal-settings','modal-install'].forEach(id=>{
+['modal-entry','modal-sync','modal-settings','modal-install','modal-cats','modal-emoji','modal-move-cat'].forEach(id=>{
   const el = document.getElementById(id);
   if(el) el.addEventListener('click',function(e){
     if(e.target===this) closeModal(id);
   });
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape') ['modal-entry','modal-sync','modal-settings','modal-install'].forEach(closeModal);
+  if(e.key==='Escape') ['modal-entry','modal-sync','modal-settings','modal-install','modal-cats','modal-emoji','modal-move-cat'].forEach(closeModal);
   if((e.ctrlKey||e.metaKey)&&e.key==='n'&&document.getElementById('main-app').style.display==='block'){
     e.preventDefault();openAdd();
   }
@@ -1822,6 +1879,178 @@ function openVaultAfterAuth() {
 
 
 // ════════════════════════════════
+// CATEGORY SYSTEM
+// ════════════════════════════════
+
+// Popular emoji grid for picker
+const EMOJI_GRID = [
+  '📱','📧','🏦','🎮','🪙','🗂️','🛒','✈️','🏥','🎵',
+  '📚','💼','🏠','🚗','🍔','💪','🎨','📷','🔑','💡',
+  '🌐','🤝','💰','🎯','🧩','🔧','📊','🌱','🎁','⭐',
+  '🔐','🧸','🏋️','🎬','🌍','💳','🖥️','📝','🏆','🎤',
+];
+
+function renderFilterBar() {
+  const bar = document.getElementById('filter-bar');
+  if (!bar) return;
+  const usedCats = new Set(vault.map(e=>e.cat));
+  bar.innerHTML = `<button class="flt ${currentFilter==='semua'?'on':''}" onclick="setFilter('semua',this)">Semua</button>` +
+    categories
+      .filter(c => usedCats.has(c.id) || c.id === currentFilter)
+      .map(c => `<button class="flt ${currentFilter===c.id?'on':''}" onclick="setFilter('${c.id}',this)">${c.icon} ${c.label}</button>`)
+      .join('');
+}
+
+function populateCatSelect(selectedId) {
+  const sel = document.getElementById('f-cat');
+  if (!sel) return;
+  sel.innerHTML = categories.map(c =>
+    `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.icon} ${c.label}</option>`
+  ).join('');
+}
+
+
+
+// ── CATEGORY CRUD ──────────────────────────────
+
+function openCatManager() {
+  renderCatManager();
+  document.getElementById('modal-cats').classList.add('open');
+}
+
+function renderCatManager() {
+  const list = document.getElementById('cat-list');
+  list.innerHTML = categories.map((c, i) => `
+    <div class="cat-row" id="catrow-${c.id}">
+      <div class="cat-row-icon" onclick="openEmojiPicker('${c.id}')" title="Ganti icon">${c.icon}</div>
+      <div class="cat-row-name" id="catname-${c.id}">${esc(c.label)}</div>
+      <div class="cat-row-btns">
+        <button class="ibtn" onclick="editCatInline('${c.id}')" title="Edit nama">✏️</button>
+        ${c.deletable !== false ? `<button class="ibtn del" onclick="deleteCat('${c.id}')" title="Hapus">🗑️</button>` : '<button class="ibtn" style="opacity:.2;cursor:default" title="Tidak bisa dihapus">🔒</button>'}
+      </div>
+    </div>
+  `).join('');
+}
+
+function editCatInline(id) {
+  const c = categories.find(c=>c.id===id);
+  if (!c) return;
+  const nameEl = document.getElementById('catname-'+id);
+  const row = document.getElementById('catrow-'+id);
+  nameEl.innerHTML = `
+    <input type="text" value="${esc(c.label)}" id="cat-edit-input-${id}" 
+      style="background:#0e0f1a;border:1px solid #f0a500;border-radius:6px;padding:5px 8px;color:#eeeef5;font-family:Outfit,sans-serif;font-size:13px;width:100%;outline:none;"
+      onkeydown="if(event.key==='Enter')saveCatEdit('${id}');if(event.key==='Escape')renderCatManager();">
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <button class="btn btn-teal btn-sm" onclick="saveCatEdit('${id}')">✓ Simpan</button>
+      <button class="btn btn-ghost btn-sm" onclick="renderCatManager()">✕</button>
+    </div>
+  `;
+  document.getElementById('cat-edit-input-'+id).focus();
+}
+
+function saveCatEdit(id) {
+  const inp = document.getElementById('cat-edit-input-'+id);
+  if (!inp) return;
+  const newLabel = inp.value.trim();
+  if (!newLabel) { toast('⚠️ Nama tidak boleh kosong'); return; }
+  const c = categories.find(c=>c.id===id);
+  if (c) { c.label = newLabel; saveCats(); renderCatManager(); render(); toast('✓ Nama diperbarui'); }
+}
+
+function openEmojiPicker(catId) {
+  document.getElementById('emoji-target-cat').value = catId;
+  document.getElementById('emoji-custom-input').value = '';
+  const grid = document.getElementById('emoji-grid');
+  grid.innerHTML = EMOJI_GRID.map(e =>
+    `<button class="emoji-btn" onclick="selectEmoji('${e}')">${e}</button>`
+  ).join('');
+  document.getElementById('modal-emoji').classList.add('open');
+}
+
+function selectEmoji(emoji) {
+  const catId = document.getElementById('emoji-target-cat').value;
+  applyEmoji(catId, emoji);
+}
+
+function applyEmoji(catId, emoji) {
+  if (!emoji.trim()) return;
+  const c = categories.find(c=>c.id===catId);
+  if (c) { c.icon = emoji.trim(); saveCats(); renderCatManager(); render(); }
+  closeModal('modal-emoji');
+  toast('✓ Icon diperbarui');
+}
+
+function deleteCat(id) {
+  const c = categories.find(c=>c.id===id);
+  if (!c || c.deletable === false) return;
+  const affected = vault.filter(e=>e.cat===id);
+  if (affected.length === 0) {
+    if (!confirm(`Hapus kategori "${c.label}"?`)) return;
+    categories = categories.filter(c=>c.id!==id);
+    saveCats(); renderCatManager(); render();
+    toast(`🗑️ Kategori dihapus`);
+    return;
+  }
+  // Has accounts — show move dialog
+  openMoveCatDialog(id, c.label, affected.length);
+}
+
+function openMoveCatDialog(fromId, fromLabel, count) {
+  const sel = document.getElementById('move-cat-select');
+  sel.innerHTML = categories
+    .filter(c=>c.id!==fromId)
+    .map(c=>`<option value="${c.id}">${c.icon} ${c.label}</option>`)
+    .join('');
+  document.getElementById('move-cat-info').textContent =
+    `Kategori "${fromLabel}" masih punya ${count} akun. Pindahkan semua ke:`;
+  document.getElementById('move-cat-confirm').onclick = () => {
+    const toId = sel.value;
+    vault = vault.map(e => e.cat===fromId ? {...e, cat:toId} : e);
+    categories = categories.filter(c=>c.id!==fromId);
+    saveCats(); if(autoSaveEnabled) scheduleAutoSave();
+    closeModal('modal-move-cat');
+    closeModal('modal-cats');
+    setTimeout(openCatManager, 100);
+    render();
+    toast(`✓ ${count} akun dipindah, kategori dihapus`);
+  };
+  document.getElementById('modal-move-cat').classList.add('open');
+}
+
+function addNewCat() {
+  const name = document.getElementById('new-cat-name').value.trim();
+  const icon = document.getElementById('new-cat-icon').value.trim() || '🗂️';
+  if (!name) { toast('⚠️ Nama kategori wajib diisi'); return; }
+  if (categories.find(c=>c.label.toLowerCase()===name.toLowerCase())) {
+    toast('⚠️ Nama kategori sudah ada'); return;
+  }
+  const id = 'cat_' + Date.now();
+  categories.push({ id, icon, label: name, editable:true, deletable:true });
+  saveCats();
+  document.getElementById('new-cat-name').value = '';
+  document.getElementById('new-cat-icon').value = '';
+  renderCatManager(); render();
+  toast(`✓ Kategori "${name}" ditambahkan`);
+}
+
+function openNewCatEmojiPicker() {
+  document.getElementById('emoji-target-cat').value = '__new__';
+  document.getElementById('emoji-custom-input').value = '';
+  const grid = document.getElementById('emoji-grid');
+  grid.innerHTML = EMOJI_GRID.map(e =>
+    `<button class="emoji-btn" onclick="selectEmojiForNew('${e}')">${e}</button>`
+  ).join('');
+  document.getElementById('modal-emoji').classList.add('open');
+}
+
+function selectEmojiForNew(emoji) {
+  document.getElementById('new-cat-icon').value = emoji;
+  document.getElementById('new-cat-icon-preview').textContent = emoji;
+  closeModal('modal-emoji');
+}
+
+// ════════════════════════════════
 // AUTO-LOCK
 // ════════════════════════════════
 const ACTIVITY_EVENTS = ['mousedown','mousemove','keydown','touchstart','scroll','click'];
@@ -1866,9 +2095,11 @@ function setAutoLock(minutes, btn) {
     b.style.color = '#9294ae';
     b.style.borderColor = '#2b2d42';
   });
-  btn.style.background = 'rgba(240,165,0,0.15)';
-  btn.style.color = '#f0a500';
-  btn.style.borderColor = '#f0a500';
+  if (btn && btn.style) {
+    btn.style.background = 'rgba(240,165,0,0.15)';
+    btn.style.color = '#f0a500';
+    btn.style.borderColor = '#f0a500';
+  }
   
   const status = document.getElementById('autolock-status');
   status.textContent = minutes === 0 ? 'Auto-lock dinonaktifkan' : `Vault akan terkunci setelah ${minutes} menit tidak aktif`;
@@ -2007,6 +2238,8 @@ function openSettings() {
 
 // Init: check if vault exists + localStorage
 window.addEventListener('load', async () => {
+  // Restore categories
+  loadCats();
   // Restore settings
   const savedAutolock = localStorage.getItem('vault_autolock');
   if (savedAutolock !== null) autoLockMinutes = parseInt(savedAutolock);
@@ -2365,6 +2598,79 @@ window.addEventListener('load', () => {
     </div>
     <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="skipPinSetup()">Lewati, gunakan master password saja</button>
   </div>
+</div>
+
+
+<!-- ══ MODAL KATEGORI ══ -->
+<div class="overlay" id="modal-cats">
+<div class="modal" style="max-width:440px;">
+  <div class="modal-title">🏷️ Kelola Kategori</div>
+
+  <!-- Add new -->
+  <div style="background:#0e0f1a;border-radius:12px;padding:14px;margin-bottom:18px;">
+    <div style="font-size:12px;font-weight:700;color:#9294ae;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Tambah Kategori Baru</div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button onclick="openNewCatEmojiPicker()" id="new-cat-icon-preview"
+        style="font-size:22px;background:#1e1f2e;border:1px solid #2b2d42;border-radius:8px;padding:6px 10px;cursor:pointer;flex-shrink:0;"
+        title="Pilih emoji">🗂️</button>
+      <input type="text" id="new-cat-icon" style="display:none;">
+      <input type="text" id="new-cat-name" placeholder="Nama kategori..." 
+        style="flex:1;background:#1e1f2e;border:1px solid #2b2d42;border-radius:8px;padding:9px 12px;color:#eeeef5;font-family:Outfit,sans-serif;font-size:13px;outline:none;"
+        onkeydown="if(event.key==='Enter')addNewCat()">
+      <button class="btn btn-gold btn-sm" onclick="addNewCat()" style="flex-shrink:0;">+ Tambah</button>
+    </div>
+    <div style="font-size:11px;color:#6b6d85;margin-top:8px;">Klik emoji 🗂️ untuk pilih icon</div>
+  </div>
+
+  <!-- List -->
+  <div style="font-size:12px;font-weight:700;color:#9294ae;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Daftar Kategori</div>
+  <div id="cat-list" style="max-height:320px;overflow-y:auto;"></div>
+  <div style="font-size:11px;color:#4a4b5a;margin-top:8px;">🔒 Kategori default tidak bisa dihapus · Klik emoji untuk ganti icon</div>
+
+  <div style="margin-top:16px;padding-top:14px;border-top:1px solid #2b2d42;">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-cats')">Tutup</button>
+  </div>
+</div>
+</div>
+
+<!-- ══ MODAL EMOJI PICKER ══ -->
+<div class="overlay" id="modal-emoji">
+<div class="modal" style="max-width:360px;">
+  <div class="modal-title">😀 Pilih Icon</div>
+  <input type="hidden" id="emoji-target-cat">
+  
+  <!-- Custom input -->
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+    <input type="text" id="emoji-custom-input" placeholder="Ketik emoji sendiri..." maxlength="4"
+      style="flex:1;background:#0e0f1a;border:1px solid #2b2d42;border-radius:8px;padding:9px 12px;color:#eeeef5;font-family:Outfit,sans-serif;font-size:18px;outline:none;text-align:center;"
+      oninput="document.getElementById('emoji-custom-preview').textContent=this.value||'?'">
+    <div id="emoji-custom-preview" style="font-size:26px;width:40px;text-align:center;">?</div>
+    <button class="btn btn-teal btn-sm" onclick="(()=>{const v=document.getElementById('emoji-custom-input').value.trim();if(!v){toast('⚠️ Ketik emoji dulu');return;}const id=document.getElementById('emoji-target-cat').value;if(id==='__new__')selectEmojiForNew(v);else applyEmoji(id,v);})()">Pakai</button>
+  </div>
+
+  <div style="font-size:11px;color:#6b6d85;margin-bottom:10px;">— atau pilih dari daftar —</div>
+  <div id="emoji-grid" class="emoji-grid"></div>
+
+  <div style="margin-top:16px;padding-top:14px;border-top:1px solid #2b2d42;">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-emoji')">Batal</button>
+  </div>
+</div>
+</div>
+
+<!-- ══ MODAL PINDAH KATEGORI ══ -->
+<div class="overlay" id="modal-move-cat">
+<div class="modal" style="max-width:360px;">
+  <div class="modal-title">📦 Pindahkan Akun</div>
+  <div id="move-cat-info" style="font-size:13px;color:#9294ae;margin-bottom:16px;line-height:1.6;"></div>
+  <div class="fg">
+    <label class="flbl">Pindahkan ke kategori:</label>
+    <select id="move-cat-select" style="width:100%;background:#0e0f1a;border:1px solid #2b2d42;border-radius:8px;padding:10px;color:#eeeef5;font-family:Outfit,sans-serif;font-size:13px;"></select>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:16px;">
+    <button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="closeModal('modal-move-cat')">Batal</button>
+    <button class="btn btn-danger" style="flex:1;justify-content:center;" id="move-cat-confirm">Hapus & Pindah</button>
+  </div>
+</div>
 </div>
 
 </body>
