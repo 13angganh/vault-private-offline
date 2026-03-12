@@ -547,6 +547,7 @@ select option{background:var(--s2);}
         <input type="file" accept=".vault,.json" onchange="importVaultFile(event)" style="display:none">
       </label>
       <button class="btn btn-ghost btn-sm" onclick="openInstallGuide()">📲 Install App</button>
+      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙️ Pengaturan</button>
       <button class="btn btn-danger btn-sm" onclick="lockApp()">🔒 Kunci</button>
       <button class="btn btn-gold btn-sm" onclick="openAdd()">+ Tambah</button>
     </div>
@@ -795,6 +796,19 @@ let expandedIds = new Set();
 let pwVisible = new Set();
 let seedVisible = new Set();
 
+// Auto-lock state
+let autoLockMinutes = 0;
+let idleTimer = null;
+let idleCountdown = null;
+let lastActivity = Date.now();
+
+// Auto-save state
+let autoSaveEnabled = true;
+let autoSaveTimer = null;
+const LS_KEY = "vault_data";
+const LS_META = "vault_meta";
+const LS_SETTINGS = "vault_settings";
+
 const WORDS = ['apple','brave','cloud','dance','eagle','frost','grace','heart','ivory','jewel','kings','light','magic','noble','ocean','pearl','quest','river','storm','truth','ultra','vivid','winds','xenon','yawns','zebra','amber','blaze','crisp','delta','ember','flare','glade','haven','indie','jazzy','kneel','lunar','maple','nexus','oaken','prism','quirk','roost','slate','titan','unity','vapor','waltz','xenix','yield','zones'];
 
 function genRecovery() {
@@ -866,6 +880,7 @@ async function finishSetup() {
   document.getElementById('main-app').style.display = 'block';
   render();
   toast('✅ Vault berhasil dibuat!');
+  if (autoLockMinutes > 0) scheduleAutoLock();
 }
 function showSetupErr(msg) {
   const el = document.getElementById('setup-err');
@@ -886,9 +901,29 @@ function unlockVault() {
   const err = document.getElementById('unlock-err');
   if (!pw) { showUnlockErr('Masukkan master password.'); return; }
   if (!masterPw) {
-    // No vault yet
-    document.getElementById('no-vault-msg').style.display = 'block';
-    err.style.display = 'none';
+    // Try to load from localStorage
+    loadFromLocal().then(async (saved) => {
+      if (saved) {
+        try {
+          const dec = await ENC.decrypt(saved.data, pw);
+          const data = JSON.parse(dec);
+          vault = data.vault || [];
+          vaultMeta = data.meta || {};
+          masterPw = pw;
+          err.style.display = 'none';
+          document.getElementById('lock-screen').style.display = 'none';
+          document.getElementById('main-app').style.display = 'block';
+          render();
+          if (autoLockMinutes > 0) scheduleAutoLock();
+          toast('✅ Vault dibuka dari data tersimpan lokal!');
+        } catch(e) {
+          showUnlockErr('Password salah.');
+        }
+      } else {
+        document.getElementById('no-vault-msg').style.display = 'block';
+        err.style.display = 'none';
+      }
+    });
     return;
   }
   if (pw !== masterPw) { showUnlockErr('Password salah. Coba lagi.'); return; }
@@ -896,12 +931,16 @@ function unlockVault() {
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   render();
+  if (autoLockMinutes > 0) scheduleAutoLock();
 }
 function showUnlockErr(msg) {
   const el = document.getElementById('unlock-err');
   el.textContent = msg; el.style.display = 'block';
 }
 function lockApp() {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  if (idleCountdown) { clearInterval(idleCountdown); idleCountdown = null; }
+  removeCountdownBanner();
   document.getElementById('main-app').style.display = 'none';
   document.getElementById('lock-screen').style.display = 'flex';
   document.getElementById('unlock-pw').value = '';
@@ -1145,6 +1184,7 @@ function saveEntry() {
   }
   closeModal('modal-entry');
   render();
+  if(autoSaveEnabled) scheduleAutoSave();
 }
 function editEntry(id) {
   const e = vault.find(e=>e.id===id);
@@ -1157,6 +1197,7 @@ function deleteEntry(id) {
     vault = vault.filter(e=>e.id!==id);
     expandedIds.delete(id); pwVisible.delete(id); seedVisible.delete(id);
     render(); toast('🗑️ Akun dihapus');
+    if(autoSaveEnabled) scheduleAutoSave();
   }
 }
 
@@ -1379,21 +1420,224 @@ function toast(msg) {
 }
 
 // Modal close on overlay click
-['modal-entry','modal-sync'].forEach(id=>{
-  document.getElementById(id).addEventListener('click',function(e){
+['modal-entry','modal-sync','modal-settings','modal-install'].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('click',function(e){
     if(e.target===this) closeModal(id);
   });
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape') ['modal-entry','modal-sync'].forEach(closeModal);
+  if(e.key==='Escape') ['modal-entry','modal-sync','modal-settings','modal-install'].forEach(closeModal);
   if((e.ctrlKey||e.metaKey)&&e.key==='n'&&document.getElementById('main-app').style.display==='block'){
     e.preventDefault();openAdd();
   }
 });
 
-// Init: check if vault exists
-window.addEventListener('load',()=>{
-  if (!masterPw) document.getElementById('no-vault-msg').style.display='block';
+// ════════════════════════════════
+// AUTO-LOCK
+// ════════════════════════════════
+const ACTIVITY_EVENTS = ['mousedown','mousemove','keydown','touchstart','scroll','click'];
+
+function resetIdleTimer() {
+  lastActivity = Date.now();
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  if (idleCountdown) { clearInterval(idleCountdown); idleCountdown = null; }
+  removeCountdownBanner();
+  if (autoLockMinutes > 0) scheduleAutoLock();
+}
+
+function scheduleAutoLock() {
+  if (!autoLockMinutes) return;
+  const ms = autoLockMinutes * 60 * 1000;
+  const warnMs = Math.min(30000, ms * 0.15); // warn 30s before (or 15%)
+  
+  idleTimer = setTimeout(() => {
+    // Show 10s countdown before locking
+    let secs = 10;
+    showCountdownBanner(secs);
+    idleCountdown = setInterval(() => {
+      secs--;
+      updateCountdownBanner(secs);
+      if (secs <= 0) {
+        clearInterval(idleCountdown);
+        removeCountdownBanner();
+        if (document.getElementById('main-app').style.display === 'block') {
+          lockApp();
+          toast('🔒 Vault dikunci otomatis karena tidak aktif');
+        }
+      }
+    }, 1000);
+  }, ms - 10000 > 0 ? ms - 10000 : ms);
+}
+
+function setAutoLock(minutes, btn) {
+  autoLockMinutes = minutes;
+  // Update UI
+  document.querySelectorAll('.alock-btn').forEach(b => {
+    b.style.background = '#0e0f1a';
+    b.style.color = '#9294ae';
+    b.style.borderColor = '#2b2d42';
+  });
+  btn.style.background = 'rgba(240,165,0,0.15)';
+  btn.style.color = '#f0a500';
+  btn.style.borderColor = '#f0a500';
+  
+  const status = document.getElementById('autolock-status');
+  status.textContent = minutes === 0 ? 'Auto-lock dinonaktifkan' : `Vault akan terkunci setelah ${minutes} menit tidak aktif`;
+  
+  // Save setting
+  try { localStorage.setItem('vault_autolock', minutes); } catch(e) {}
+  
+  // Reset timer
+  if (idleTimer) clearTimeout(idleTimer);
+  if (idleCountdown) clearInterval(idleCountdown);
+  removeCountdownBanner();
+  if (minutes > 0) scheduleAutoLock();
+}
+
+function showCountdownBanner(secs) {
+  if (document.getElementById('autolock-banner')) return;
+  const b = document.createElement('div');
+  b.id = 'autolock-banner';
+  b.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#1e1f2e;border:1px solid #ff4d6d;border-radius:12px;padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:9998;box-shadow:0 4px 20px rgba(255,77,109,.2);font-family:Outfit,sans-serif;white-space:nowrap;';
+  b.innerHTML = `<span style="font-size:18px;">⏰</span><div><div style="font-size:13px;font-weight:700;color:#eeeef5;">Vault akan dikunci dalam <span id="countdown-secs" style="color:#ff4d6d;">${secs}</span> detik</div><div style="font-size:11px;color:#9294ae;margin-top:2px;">Gerakkan layar untuk membatalkan</div></div><button onclick="resetIdleTimer()" style="background:rgba(240,165,0,.15);border:1px solid #f0a500;color:#f0a500;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;flex-shrink:0;">Tetap Buka</button>`;
+  document.body.appendChild(b);
+}
+
+function updateCountdownBanner(secs) {
+  const el = document.getElementById('countdown-secs');
+  if (el) el.textContent = secs;
+}
+
+function removeCountdownBanner() {
+  const b = document.getElementById('autolock-banner');
+  if (b) b.remove();
+}
+
+// Register activity listeners
+ACTIVITY_EVENTS.forEach(ev => {
+  document.addEventListener(ev, () => {
+    if (autoLockMinutes > 0 && document.getElementById('main-app').style.display === 'block') {
+      resetIdleTimer();
+    }
+  }, { passive: true });
+});
+
+// ════════════════════════════════
+// AUTO-SAVE LOCALSTORAGE
+// ════════════════════════════════
+
+async function saveToLocal() {
+  if (!autoSaveEnabled || !masterPw || vault.length === 0) return;
+  try {
+    const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery } });
+    const encrypted = await ENC.encrypt(payload, masterPw);
+    const saveData = JSON.stringify({ format: 'vault2', hint: vaultMeta.hint || '', data: encrypted, savedAt: new Date().toISOString(), count: vault.length });
+    localStorage.setItem(LS_KEY, saveData);
+    updateSaveInfo();
+  } catch(e) { console.warn('Auto-save failed:', e); }
+}
+
+async function saveToLocalNow() {
+  await saveToLocal();
+  toast('💾 Data berhasil disimpan ke browser!');
+}
+
+function scheduleAutoSave() {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => saveToLocal(), 1500); // debounce 1.5s
+}
+
+function toggleAutoSave(enabled) {
+  autoSaveEnabled = enabled;
+  const slider = document.getElementById('autosave-slider');
+  const knob = document.getElementById('autosave-knob');
+  const label = document.getElementById('autosave-label');
+  if (slider) slider.style.background = enabled ? '#f0a500' : '#2b2d42';
+  if (knob) knob.style.transform = enabled ? 'translateX(20px)' : 'translateX(0)';
+  if (label) label.textContent = enabled ? 'Aktif' : 'Nonaktif';
+  try { localStorage.setItem('vault_autosave_enabled', enabled ? '1' : '0'); } catch(e) {}
+  if (enabled) toast('💾 Auto-save diaktifkan');
+  else toast('Auto-save dinonaktifkan');
+}
+
+function updateSaveInfo() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const el = document.getElementById('last-save-time');
+    const cnt = document.getElementById('saved-count');
+    if (el && parsed.savedAt) {
+      const d = new Date(parsed.savedAt);
+      el.textContent = d.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    }
+    if (cnt) cnt.textContent = parsed.count || 0;
+  } catch(e) {}
+}
+
+function clearLocalData() {
+  if (!confirm('Hapus semua data tersimpan di browser ini? Data di memori saat ini tidak terpengaruh.')) return;
+  try {
+    localStorage.removeItem(LS_KEY);
+    updateSaveInfo();
+    toast('🗑️ Data lokal dihapus');
+  } catch(e) { toast('⚠️ Gagal menghapus data lokal'); }
+}
+
+async function loadFromLocal() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (parsed.format !== 'vault2') return false;
+    return parsed; // return raw parsed, password will be asked at unlock
+  } catch(e) { return false; }
+}
+
+// ════════════════════════════════
+// SETTINGS MODAL
+// ════════════════════════════════
+function openSettings() {
+  updateSaveInfo();
+  // Restore autolock UI
+  const saved = localStorage.getItem('vault_autolock');
+  if (saved !== null) {
+    const min = parseInt(saved);
+    const btn = document.querySelector(`.alock-btn[data-min="${min}"]`);
+    if (btn) setAutoLock(min, btn);
+  }
+  // Restore autosave UI
+  const asEnabled = localStorage.getItem('vault_autosave_enabled');
+  if (asEnabled === '0') {
+    autoSaveEnabled = false;
+    const tog = document.getElementById('autosave-toggle');
+    if (tog) { tog.checked = false; toggleAutoSave(false); }
+  }
+  document.getElementById('modal-settings').classList.add('open');
+}
+
+// Init: check if vault exists + localStorage
+window.addEventListener('load', async () => {
+  // Restore settings
+  const savedAutolock = localStorage.getItem('vault_autolock');
+  if (savedAutolock !== null) autoLockMinutes = parseInt(savedAutolock);
+  const savedAutosave = localStorage.getItem('vault_autosave_enabled');
+  if (savedAutosave === '0') autoSaveEnabled = false;
+  
+  // Check if there's saved data in localStorage
+  const saved = await loadFromLocal();
+  if (saved) {
+    // Show hint if available
+    const hintEl = document.createElement('div');
+    hintEl.style.cssText = 'background:rgba(0,212,170,.07);border:1px solid rgba(0,212,170,.18);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(0,212,170,.8);margin-bottom:16px;line-height:1.6;';
+    hintEl.innerHTML = `💾 <strong>Data vault ditemukan!</strong> Masukkan master password untuk membuka.<br>${saved.hint ? `<span style="color:#6b6d85;font-size:11px;margin-top:4px;display:block;">Hint: ${saved.hint}</span>` : ''}`;
+    const panel = document.getElementById('panel-unlock');
+    panel.insertBefore(hintEl, panel.firstChild);
+    document.getElementById('no-vault-msg').style.display = 'none';
+  } else {
+    document.getElementById('no-vault-msg').style.display = 'block';
+  }
 });
 
 
@@ -1617,6 +1861,74 @@ window.addEventListener('load', () => {
 </div>
 </div>
 
+
+
+<!-- ══════════════════════════════════════
+     MODAL PENGATURAN
+══════════════════════════════════════ -->
+<div class="overlay" id="modal-settings">
+<div class="modal" style="max-width:420px;">
+  <div class="modal-title">⚙️ Pengaturan</div>
+
+  <!-- AUTO-LOCK -->
+  <div style="margin-bottom:22px;">
+    <div style="font-size:13px;font-weight:700;color:#eeeef5;margin-bottom:4px;">🔒 Auto-Lock</div>
+    <div style="font-size:12px;color:#9294ae;margin-bottom:12px;line-height:1.5;">Vault otomatis terkunci setelah tidak aktif selama waktu yang dipilih.</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;" id="autolock-options">
+      <button class="alock-btn" data-min="1" onclick="setAutoLock(1,this)" style="padding:10px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">1 menit</button>
+      <button class="alock-btn" data-min="5" onclick="setAutoLock(5,this)" style="padding:10px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">5 menit</button>
+      <button class="alock-btn" data-min="10" onclick="setAutoLock(10,this)" style="padding:10px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">10 menit</button>
+      <button class="alock-btn" data-min="15" onclick="setAutoLock(15,this)" style="padding:10px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">15 menit</button>
+      <button class="alock-btn" data-min="30" onclick="setAutoLock(30,this)" style="padding:10px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">30 menit</button>
+      <button class="alock-btn" data-min="0" onclick="setAutoLock(0,this)" style="padding:10px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">Nonaktif</button>
+    </div>
+    <div id="autolock-status" style="font-size:11px;color:#6b6d85;margin-top:8px;text-align:center;"></div>
+  </div>
+
+  <div style="border-top:1px solid #2b2d42;margin-bottom:22px;"></div>
+
+  <!-- AUTO-SAVE -->
+  <div style="margin-bottom:22px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div style="font-size:13px;font-weight:700;color:#eeeef5;">💾 Auto-Save Lokal</div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <span style="font-size:12px;color:#9294ae;" id="autosave-label">Aktif</span>
+        <div style="position:relative;width:44px;height:24px;">
+          <input type="checkbox" id="autosave-toggle" checked onchange="toggleAutoSave(this.checked)"
+            style="opacity:0;width:0;height:0;position:absolute;">
+          <div id="autosave-slider" style="position:absolute;inset:0;background:#f0a500;border-radius:12px;transition:background .2s;cursor:pointer;" onclick="document.getElementById('autosave-toggle').click()">
+            <div id="autosave-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:white;border-radius:50%;transition:transform .2s;transform:translateX(20px);"></div>
+          </div>
+        </div>
+      </label>
+    </div>
+    <div style="font-size:12px;color:#9294ae;margin-bottom:10px;line-height:1.5;">Data terenkripsi otomatis disimpan di browser. Tidak perlu ekspor manual setiap saat.</div>
+    <div id="autosave-info" style="background:#0e0f1a;border-radius:10px;padding:12px;font-size:12px;color:#6b6d85;line-height:1.6;">
+      <div>📅 Terakhir disimpan: <span id="last-save-time" style="color:#9294ae;">Belum ada</span></div>
+      <div style="margin-top:4px;">🔢 Jumlah akun tersimpan: <span id="saved-count" style="color:#9294ae;">0</span></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn btn-teal btn-sm" style="flex:1;justify-content:center;" onclick="saveToLocalNow()">💾 Simpan Sekarang</button>
+      <button class="btn btn-danger btn-sm" style="flex:1;justify-content:center;" onclick="clearLocalData()">🗑️ Hapus Data Lokal</button>
+    </div>
+  </div>
+
+  <div style="border-top:1px solid #2b2d42;margin-bottom:22px;"></div>
+
+  <!-- INFO -->
+  <div style="background:#0e0f1a;border-radius:10px;padding:14px;">
+    <div style="font-size:12px;color:#6b6d85;line-height:1.8;">
+      <div>🔐 Enkripsi: <span style="color:#9294ae;">AES-256-GCM + PBKDF2</span></div>
+      <div>📦 Vault v2.1</div>
+      <div style="margin-top:8px;font-size:11px;color:#4a4b5a;">⚠️ Auto-save menyimpan data terenkripsi di localStorage browser ini saja. Data tidak tersinkron ke perangkat lain — tetap gunakan Ekspor untuk backup.</div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-settings')">Tutup</button>
+  </div>
+</div>
+</div>
 
 </body>
 </html>
