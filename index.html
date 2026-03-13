@@ -1102,7 +1102,15 @@ function setRecoveryMode(mode) {
   document.getElementById('rec-tab-reset').style.fontSize = '13px';
   document.getElementById('rec-info-login').style.display = isLogin ? 'block' : 'none';
   document.getElementById('rec-info-reset').style.display = isLogin ? 'none'  : 'block';
-  document.getElementById('rec-newpw-row').style.display  = isLogin ? 'none'  : 'block';
+  const rpRow = document.getElementById('rec-newpw-row');
+  rpRow.style.display = isLogin ? 'none' : 'block';
+  // Fix G: reset password visibility setiap kali mode berubah
+  if (isLogin) {
+    const rp = document.getElementById('recovery-newpw');
+    if (rp) { rp.value = ''; rp.type = 'password'; }
+    const rpWrap = rp ? rp.closest('.pw-wrap') : null;
+    if (rpWrap) { const btn = rpWrap.querySelector('.pwtog'); if (btn) btn.textContent = '👁️'; }
+  }
   const btn = document.getElementById('rec-btn-action');
   if (isLogin) {
     btn.textContent = '🔓 Buka Vault';
@@ -1114,7 +1122,6 @@ function setRecoveryMode(mode) {
   btn.style.width = '100%';
   btn.style.justifyContent = 'center';
   btn.style.marginBottom = '10px';
-  // Store mode
   btn.dataset.mode = mode;
   document.getElementById('recover-err').style.display = 'none';
 }
@@ -1129,7 +1136,10 @@ function showRecoveryPanel() {
   const rp = document.getElementById('recovery-newpw');
   const re = document.getElementById('recover-err');
   if (ri) ri.value = '';
-  if (rp) rp.value = '';
+  if (rp) { rp.value = ''; rp.type = 'password'; } // Fix F: reset visibility
+  // Reset eye button untuk recovery-newpw
+  const rpWrap = rp ? rp.closest('.pw-wrap') : null;
+  if (rpWrap) { const btn = rpWrap.querySelector('.pwtog'); if (btn) btn.textContent = '👁️'; }
   if (re) re.style.display = 'none';
   // Default mode: login
   setRecoveryMode('login');
@@ -1207,26 +1217,23 @@ function lockApp() {
   document.getElementById('lock-screen').style.display = 'flex';
   document.getElementById('unlock-pw').value = '';
   document.getElementById('unlock-err').style.display = 'none';
-  document.getElementById('no-vault-msg').style.display = 'none'; // Fix: hide this on lock
+  document.getElementById('no-vault-msg').style.display = 'none';
   expandedIds.clear(); pwVisible.clear(); seedVisible.clear();
   // Security: simpan ke LS dulu, baru clear memori
-  if (autoSaveEnabled && masterPw && vault.length > 0) {
-    // Simpan sinkron-ish sebelum clear (fire and forget)
-    saveToLocal();
-  } else if (autoSaveEnabled && masterPw) {
-    // vault kosong tapi meta ada — simpan marker
-    try {
-      const marker = localStorage.getItem(LS_KEY);
-      const parsed = marker ? JSON.parse(marker) : null;
-      if (parsed && parsed._metaOnly) { /* already saved */ }
-    } catch(e) {}
+  if (masterPw && vault.length > 0) {
+    _doSaveToLocal(); // simpan tanpa peduli flag autoSaveEnabled saat kunci manual
   }
   vault = [];
   masterPw = '';
-  // Reset categories to whatever is in localStorage (clean state for next unlock)
+  // Reset categories ke state bersih
   categories = JSON.parse(JSON.stringify(DEFAULT_CATS));
   loadCats();
-  // Show PIN panel if PIN exists, else master pw
+  // Fix A+B: reset PIN attempt counter dan unlock pin-pad visual
+  pinAttempts = 0;
+  pinLocked = false;
+  const pad = document.getElementById('pin-pad');
+  if (pad) { pad.style.opacity = ''; pad.style.pointerEvents = ''; }
+  // Show PIN panel jika PIN ada, else master pw
   if (hasPin()) {
     showPinPanel();
   } else {
@@ -1345,7 +1352,7 @@ async function doRecovery() {
     encMasterBySeed: newEncMBS
   };
   vault = [];
-  await saveToLocal();
+  await _doSaveToLocal(); // bypass autoSaveEnabled — reset vault harus selalu tersimpan
   saveVaultMeta();
   localStorage.removeItem(LS_PIN);
   localStorage.removeItem('vault_pin_skipped');
@@ -1431,8 +1438,28 @@ function render() {
   document.getElementById('st-crypto').textContent = vault.filter(e=>e.cat==='crypto').length;
   document.getElementById('st-cat').textContent = new Set(vault.map(e=>e.cat)).size;
 
-  grid.querySelectorAll('.card').forEach(c=>c.remove());
-  empty.style.display = filtered.length===0 ? 'block' : 'none';
+  // Hapus hanya card — jangan sentuh #empty agar tidak bergeser posisi
+  grid.querySelectorAll('.card').forEach(c => c.remove());
+
+  // Fix E: teks empty state kontekstual
+  if (filtered.length === 0) {
+    const emptyTitle = empty.querySelector('.empty-t');
+    const emptyDesc  = empty.querySelector('.empty-d');
+    if (vault.length === 0) {
+      if (emptyTitle) emptyTitle.textContent = 'Vault masih kosong';
+      if (emptyDesc)  emptyDesc.innerHTML   = 'Klik <strong>+ Tambah</strong> untuk menyimpan akun pertama.';
+    } else if (q) {
+      if (emptyTitle) emptyTitle.textContent = 'Tidak ada hasil';
+      if (emptyDesc)  emptyDesc.innerHTML   = `Tidak ada akun yang cocok dengan pencarian <strong>"${esc(q)}"</strong>.`;
+    } else {
+      const catName = catLabel(currentFilter);
+      if (emptyTitle) emptyTitle.textContent = 'Tidak ada akun di sini';
+      if (emptyDesc)  emptyDesc.innerHTML   = `Belum ada akun di kategori <strong>${catName}</strong>.`;
+    }
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+  }
 
   renderFilterBar();
   filtered.forEach(e => {
@@ -1992,8 +2019,8 @@ async function submitPinSetup() {
     document.getElementById('main-app').style.display = 'block';
     render();
     if (autoLockMinutes > 0) scheduleAutoLock();
-    // Simpan langsung sekarang (termasuk recovery phrase) — jangan tunggu debounce
-    await saveToLocal();
+    // Simpan langsung — bypass autoSaveEnabled agar vault baru selalu tersimpan
+    await _doSaveToLocal();
     if (ok) {
       toast('✅ Vault dibuat! PIN tersimpan.');
     } else {
@@ -2010,7 +2037,7 @@ function skipPinSetup() {
   render();
   if (autoLockMinutes > 0) scheduleAutoLock();
   toast('✅ Vault berhasil dibuat!');
-  saveToLocal(); // Simpan langsung termasuk recovery phrase
+  _doSaveToLocal(); // bypass autoSaveEnabled — vault baru harus selalu tersimpan
 }
 
 // ════════════════════════════════
@@ -2529,22 +2556,29 @@ function loadVaultMeta() {
 }
 
 async function saveToLocal() {
-  // Save bahkan kalau vault kosong (supaya meta tersimpan)
+  // Guard: hanya jalankan jika auto-save aktif dan vault sudah terbuka
   if (!autoSaveEnabled || !masterPw) return;
+  await _doSaveToLocal();
+}
+
+// Internal save — dipanggil langsung oleh saveToLocalNow (bypass autoSaveEnabled flag)
+async function _doSaveToLocal() {
+  if (!masterPw) return; // vault belum dibuka, tidak ada yang bisa disimpan
   try {
-    // Include custom categories in payload so they survive re-import
     const customCats = categories.filter(c => !DEFAULT_CATS.find(d=>d.id===c.id));
     const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery, encMasterBySeed: vaultMeta.encMasterBySeed || '' }, customCats });
     const encrypted = await ENC.encrypt(payload, masterPw);
     const saveData = JSON.stringify({ format: 'vault2', hint: vaultMeta.hint || '', data: encrypted, savedAt: new Date().toISOString(), count: vault.length });
     localStorage.setItem(LS_KEY, saveData);
-    saveVaultMeta(); // keep meta key in sync
+    saveVaultMeta();
     updateSaveInfo();
-  } catch(e) { console.warn('Auto-save failed:', e); }
+  } catch(e) { console.warn('Save failed:', e); }
 }
 
 async function saveToLocalNow() {
-  await saveToLocal();
+  // Selalu simpan saat user klik manual, apapun state autoSaveEnabled
+  await _doSaveToLocal();
+  updateSaveInfo();
   toast('💾 Data berhasil disimpan ke browser!');
 }
 
@@ -2565,6 +2599,10 @@ function setAutoSaveUI(enabled) {
 
 function toggleAutoSave(enabled) {
   autoSaveEnabled = enabled;
+  // Sync checkbox state (tanpa trigger onchange lagi)
+  const tog = document.getElementById('autosave-toggle');
+  if (tog && tog.checked !== enabled) tog.checked = enabled;
+  // Update visual toggle
   const slider = document.getElementById('autosave-slider');
   const knob = document.getElementById('autosave-knob');
   const label = document.getElementById('autosave-label');
@@ -2572,23 +2610,40 @@ function toggleAutoSave(enabled) {
   if (knob) knob.style.transform = enabled ? 'translateX(20px)' : 'translateX(0)';
   if (label) label.textContent = enabled ? 'Aktif' : 'Nonaktif';
   try { localStorage.setItem('vault_autosave_enabled', enabled ? '1' : '0'); } catch(e) {}
-  if (enabled) toast('💾 Auto-save diaktifkan');
-  else toast('Auto-save dinonaktifkan');
+}
+
+// Dipanggil dari onchange pada checkbox — user sengaja klik toggle
+function onAutoSaveToggle(enabled) {
+  toggleAutoSave(enabled);
+  if (enabled) {
+    toast('💾 Auto-save diaktifkan');
+    scheduleAutoSave(); // langsung simpan setelah diaktifkan
+  } else {
+    toast('⚠️ Auto-save dinonaktifkan');
+  }
 }
 
 function updateSaveInfo() {
+  const el  = document.getElementById('last-save-time');
+  const cnt = document.getElementById('saved-count');
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return;
+    if (!raw) {
+      // Data lokal sudah dihapus — reset tampilan
+      if (el)  el.textContent  = 'Belum ada';
+      if (cnt) cnt.textContent = '0';
+      return;
+    }
     const parsed = JSON.parse(raw);
-    const el = document.getElementById('last-save-time');
-    const cnt = document.getElementById('saved-count');
     if (el && parsed.savedAt) {
       const d = new Date(parsed.savedAt);
       el.textContent = d.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
     }
     if (cnt) cnt.textContent = parsed.count || 0;
-  } catch(e) {}
+  } catch(e) {
+    if (el)  el.textContent  = 'Belum ada';
+    if (cnt) cnt.textContent = '0';
+  }
 }
 
 function clearLocalData() {
@@ -2626,13 +2681,13 @@ function openSettings() {
     const btn = document.querySelector(`.alock-btn[data-min="${min}"]`);
     if (btn) setAutoLock(min, btn);
   }
-  // Restore autosave UI
+  // Restore autosave UI — hanya update visual, jangan ubah state atau trigger toast
   const asEnabled = localStorage.getItem('vault_autosave_enabled');
-  if (asEnabled === '0') {
-    autoSaveEnabled = false;
-    const tog = document.getElementById('autosave-toggle');
-    if (tog) { tog.checked = false; toggleAutoSave(false); }
-  }
+  const isEnabled = asEnabled !== '0'; // default true jika belum pernah disimpan
+  autoSaveEnabled = isEnabled;
+  const tog = document.getElementById('autosave-toggle');
+  if (tog) tog.checked = isEnabled;
+  setAutoSaveUI(isEnabled);
   document.getElementById('modal-settings').classList.add('open');
 }
 
@@ -2926,7 +2981,7 @@ window.addEventListener('load', () => {
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
         <span style="font-size:12px;color:#9294ae;" id="autosave-label">Aktif</span>
         <div style="position:relative;width:44px;height:24px;">
-          <input type="checkbox" id="autosave-toggle" checked onchange="toggleAutoSave(this.checked)"
+          <input type="checkbox" id="autosave-toggle" checked onchange="onAutoSaveToggle(this.checked)"
             style="opacity:0;width:0;height:0;position:absolute;">
           <div id="autosave-slider" style="position:absolute;inset:0;background:#f0a500;border-radius:12px;transition:background .2s;cursor:pointer;" onclick="document.getElementById('autosave-toggle').click()">
             <div id="autosave-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:white;border-radius:50%;transition:transform .2s;transform:translateX(20px);"></div>
