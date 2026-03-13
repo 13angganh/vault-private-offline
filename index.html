@@ -1157,6 +1157,12 @@ async function unlockVault() {
       const data = JSON.parse(dec);
       vault = data.vault || [];
       vaultMeta = data.meta || {};
+      // Restore custom categories saved inside vault payload
+      if (Array.isArray(data.customCats) && data.customCats.length > 0) {
+        const defaultIds = DEFAULT_CATS.map(c=>c.id);
+        categories = [...DEFAULT_CATS.map(d=>({...d})), ...data.customCats.filter(c=>!defaultIds.includes(c.id))];
+        saveCats(); // keep vault_cats in sync
+      }
           // Fallback: pastikan encMasterBySeed ada dari vault_meta LS
           if (!vaultMeta.encMasterBySeed) {
             const _mls = loadVaultMeta();
@@ -1217,6 +1223,9 @@ function lockApp() {
   }
   vault = [];
   masterPw = '';
+  // Reset categories to whatever is in localStorage (clean state for next unlock)
+  categories = JSON.parse(JSON.stringify(DEFAULT_CATS));
+  loadCats();
   // Show PIN panel if PIN exists, else master pw
   if (hasPin()) {
     showPinPanel();
@@ -1293,6 +1302,12 @@ async function doRecovery() {
         const data = JSON.parse(dec);
         vault = data.vault || [];
         vaultMeta = data.meta || {};
+        // Restore custom categories from vault payload
+        if (Array.isArray(data.customCats) && data.customCats.length > 0) {
+          const defaultIds = DEFAULT_CATS.map(c=>c.id);
+          categories = [...DEFAULT_CATS.map(d=>({...d})), ...data.customCats.filter(c=>!defaultIds.includes(c.id))];
+          saveCats();
+        }
         // Pastikan encMasterBySeed ada
         if (!vaultMeta.encMasterBySeed && meta.encMasterBySeed) {
           vaultMeta.encMasterBySeed = meta.encMasterBySeed;
@@ -1365,15 +1380,15 @@ function loadCats() {
     const raw = localStorage.getItem('vault_cats');
     if (raw) {
       const saved = JSON.parse(raw);
-      // Merge: keep defaults intact, add custom ones
       const defaultIds = DEFAULT_CATS.map(c=>c.id);
-      // Update default labels/icons from saved
-      DEFAULT_CATS.forEach(def => {
+      // Build fresh copies of defaults (don't mutate DEFAULT_CATS const objects)
+      const mergedDefaults = DEFAULT_CATS.map(def => {
         const s = saved.find(c=>c.id===def.id);
-        if (s) { def.label = s.label; def.icon = s.icon; }
+        // Return a new object — never mutate DEFAULT_CATS
+        return s ? { ...def, label: s.label, icon: s.icon } : { ...def };
       });
       categories = [
-        ...DEFAULT_CATS,
+        ...mergedDefaults,
         ...saved.filter(c=>!defaultIds.includes(c.id))
       ];
     }
@@ -1474,7 +1489,7 @@ function buildExpanded(e, isPwVis, isSeedVis) {
           <div style="flex:1;">
             <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
               <button class="btn btn-ghost btn-sm" onclick="toggleSeedView('${e.id}')">🔀 Toggle Grid/List</button>
-              <button class="ibtn" onclick="copyText('${e.seedPhrase.join(' ')}',this)" title="Salin semua">📋</button>
+              <button class="ibtn" onclick="copyText('${escAttr(e.seedPhrase.join(' '))}',this)" title="Salin semua">📋</button>
               <button class="ibtn" onclick="toggleSeedVis('${e.id}')">🙈 Sembunyikan</button>
             </div>
             ${gridView}${listView}
@@ -1484,8 +1499,8 @@ function buildExpanded(e, isPwVis, isSeedVis) {
     }
     return `<div class="exp open">
       ${e.network ? `<div class="frow"><span class="flabel">Network</span><span class="fval">${esc(e.network)}</span></div>` : ''}
-      ${e.walletAddr ? `<div class="frow"><span class="flabel">Alamat</span><span class="fval">${esc(e.walletAddr)}</span><button class="ibtn" onclick="copyText('${esc(e.walletAddr)}',this)">📋</button></div>` : ''}
-      ${e.walletPw ? `<div class="frow"><span class="flabel">Password</span><span class="fval ${isPwVis?'':'dot'}">${isPwVis?esc(e.walletPw):'••••••••'}</span><button class="ibtn" onclick="togglePwVis('${e.id}')">👁️</button><button class="ibtn" onclick="copyText('${esc(e.walletPw)}',this)">📋</button></div>` : ''}
+      ${e.walletAddr ? `<div class="frow"><span class="flabel">Alamat</span><span class="fval">${esc(e.walletAddr)}</span><button class="ibtn" onclick="copyText('${escAttr(e.walletAddr)}',this)">📋</button></div>` : ''}
+      ${e.walletPw ? `<div class="frow"><span class="flabel">Password</span><span class="fval ${isPwVis?'':'dot'}">${isPwVis?esc(e.walletPw):'••••••••'}</span><button class="ibtn" onclick="togglePwVis('${e.id}')">👁️</button><button class="ibtn" onclick="copyText('${escAttr(e.walletPw)}',this)">📋</button></div>` : ''}
       ${seedHtml}
       ${e.note ? `<div class="frow" style="align-items:flex-start"><span class="flabel">Catatan</span><span style="font-size:12px;color:var(--muted2);line-height:1.5;">${esc(e.note)}</span></div>` : ''}
     </div>`;
@@ -1494,13 +1509,13 @@ function buildExpanded(e, isPwVis, isSeedVis) {
       <div class="frow">
         <span class="flabel">Username</span>
         <span class="fval">${esc(e.user)}</span>
-        <button class="ibtn" onclick="copyText('${esc(e.user)}',this)">📋</button>
+        <button class="ibtn" onclick="copyText('${escAttr(e.user)}',this)">📋</button>
       </div>
       <div class="frow">
         <span class="flabel">Password</span>
         <span class="fval ${isPwVis?'':'dot'}">${isPwVis?esc(e.pass):'••••••••'}</span>
         <button class="ibtn" onclick="togglePwVis('${e.id}')">👁️</button>
-        <button class="ibtn" onclick="copyText('${esc(e.pass)}',this)">📋</button>
+        <button class="ibtn" onclick="copyText('${escAttr(e.pass)}',this)">📋</button>
       </div>
       ${e.url ? `<div class="frow"><span class="flabel">URL</span><a href="${esc(e.url)}" target="_blank" style="color:var(--teal);font-family:var(--mono);font-size:12px;">${esc(e.url)}</a></div>` : ''}
       ${e.note ? `<div class="frow" style="align-items:flex-start"><span class="flabel">Catatan</span><span style="font-size:12px;color:var(--muted2);line-height:1.5;">${esc(e.note)}</span></div>` : ''}
@@ -1600,13 +1615,16 @@ function saveEntry() {
   } else {
     const user = document.getElementById('f-user').value.trim();
     const pass = document.getElementById('f-pass').value;
-    if (!user || !pass) { toast('⚠️ Username dan password wajib diisi!'); return; }
+    // Untuk kategori default standard, user+pass wajib. Kategori custom boleh kosong.
+    const isDefaultCat = DEFAULT_CATS.find(c=>c.id===cat);
+    if (isDefaultCat && (!user || !pass)) { toast('⚠️ Username dan password wajib diisi!'); return; }
     entry.user = user; entry.pass = pass;
     entry.url  = document.getElementById('f-url').value.trim();
   }
 
   if (editId) {
     const idx = vault.findIndex(e=>e.id===editId);
+    if (idx === -1) { toast('⚠️ Akun tidak ditemukan'); return; }
     vault[idx] = entry;
     toast('✅ Akun diperbarui');
   } else {
@@ -1660,7 +1678,8 @@ function setSyncTab(name,btn) {
 }
 async function genQR() {
   if (!masterPw) { toast('⚠️ Buka vault dulu'); return; }
-  const payload = JSON.stringify({ vault, meta: {hint:vaultMeta.hint, recovery:vaultMeta.recovery||''} });
+  const customCats = categories.filter(c => !DEFAULT_CATS.find(d=>d.id===c.id));
+  const payload = JSON.stringify({ vault, meta: {hint:vaultMeta.hint, recovery:vaultMeta.recovery||''}, customCats });
   const encrypted = await ENC.encrypt(payload, masterPw);
   const syncPayload = 'VAULT2:'+encrypted;
   const container = document.getElementById('qr-canvas');
@@ -1671,7 +1690,8 @@ async function genQR() {
 }
 async function genText() {
   if (!masterPw) { toast('⚠️ Buka vault dulu'); return; }
-  const payload = JSON.stringify({ vault, meta:{hint:vaultMeta.hint, recovery:vaultMeta.recovery||''} });
+  const customCats = categories.filter(c => !DEFAULT_CATS.find(d=>d.id===c.id));
+  const payload = JSON.stringify({ vault, meta:{hint:vaultMeta.hint, recovery:vaultMeta.recovery||''}, customCats });
   const encrypted = await ENC.encrypt(payload, masterPw);
   const syncPayload = 'VAULT2:'+encrypted;
   document.getElementById('enc-text-display').textContent = syncPayload;
@@ -1694,10 +1714,18 @@ async function importFromText() {
     const data = JSON.parse(decrypted);
     const incoming = data.vault || data;
     if (!Array.isArray(incoming)) throw new Error('Format tidak valid');
+    // Restore custom categories from sync payload
+    if (Array.isArray(data.customCats) && data.customCats.length > 0) {
+      const defaultIds = DEFAULT_CATS.map(c=>c.id);
+      const existCustomIds = new Set(categories.filter(c=>!defaultIds.includes(c.id)).map(c=>c.id));
+      const newCats = data.customCats.filter(c=>!defaultIds.includes(c.id) && !existCustomIds.has(c.id));
+      if (newCats.length > 0) { categories = [...categories, ...newCats]; saveCats(); }
+    }
     const existIds = new Set(vault.map(e=>e.id));
     const merged = incoming.filter(e=>!existIds.has(e.id));
     vault.push(...merged);
     render();
+    if (autoSaveEnabled) scheduleAutoSave();
     closeModal('modal-sync');
     toast(`✅ ${merged.length} akun baru ditambahkan!`);
   } catch(e) {
@@ -1726,14 +1754,16 @@ function startQRScan() {
 // ════════════════════════════════
 async function exportVault() {
   if (!masterPw) { toast('⚠️ Buka vault dulu sebelum ekspor'); return; }
-  // Sertakan vault (meski kosong) + meta + recovery
+  // Sertakan vault (meski kosong) + meta + recovery + custom categories
+  const customCats = categories.filter(c => !DEFAULT_CATS.find(d=>d.id===c.id));
   const payload = JSON.stringify({
     vault,
     meta: {
       hint: vaultMeta.hint,
       recoveryHash: vaultMeta.recoveryHash,
       recovery: vaultMeta.recovery || ''
-    }
+    },
+    customCats
   });
   const encrypted = await ENC.encrypt(payload, masterPw);
   const fileData = JSON.stringify({
@@ -1764,6 +1794,7 @@ async function importVaultFile(event) {
       const parsed = JSON.parse(e.target.result);
       // Detect format
       let incoming;
+      let importedCustomCats = null;
       if (parsed.format === 'vault2') {
         // Encrypted vault
         if (!masterPw) {
@@ -1774,6 +1805,7 @@ async function importVaultFile(event) {
             const dec = await ENC.decrypt(parsed.data, pw);
             const data = JSON.parse(dec);
             incoming = data.vault;
+            importedCustomCats = data.customCats || null;
             // If no vault yet, set up state
             if (!masterPw) {
               masterPw = pw;
@@ -1787,6 +1819,7 @@ async function importVaultFile(event) {
             const dec = await ENC.decrypt(parsed.data, masterPw);
             const data = JSON.parse(dec);
             incoming = data.vault;
+            importedCustomCats = data.customCats || null;
           } catch {
             // Try asking for password
             const pw = prompt('Master password berbeda. Masukkan password file ini:');
@@ -1795,6 +1828,7 @@ async function importVaultFile(event) {
               const dec = await ENC.decrypt(parsed.data, pw);
               const data = JSON.parse(dec);
               incoming = data.vault;
+              importedCustomCats = data.customCats || null;
             } catch { alert('Password salah.'); return; }
           }
         }
@@ -1803,6 +1837,16 @@ async function importVaultFile(event) {
         incoming = parsed.accounts || parsed;
       }
       if (!Array.isArray(incoming)) throw new Error('Format tidak valid');
+      // Restore custom categories from import
+      if (Array.isArray(importedCustomCats) && importedCustomCats.length > 0) {
+        const defaultIds = DEFAULT_CATS.map(c=>c.id);
+        const existCustomIds = new Set(categories.filter(c=>!defaultIds.includes(c.id)).map(c=>c.id));
+        const newCats = importedCustomCats.filter(c=>!defaultIds.includes(c.id) && !existCustomIds.has(c.id));
+        if (newCats.length > 0) {
+          categories = [...categories, ...newCats];
+          saveCats();
+        }
+      }
       const valid = incoming.filter(a=>a.name);
       if (!masterPw && valid.length>0) {
         // vault was empty, just load
@@ -1819,6 +1863,7 @@ async function importVaultFile(event) {
       document.getElementById('setup-screen').style.display='none';
       document.getElementById('main-app').style.display='block';
       render();
+      if (autoSaveEnabled && masterPw) scheduleAutoSave();
       toast(`✅ ${valid.length} akun diimpor!`);
     } catch(err) { alert('File tidak valid: '+err.message); }
   };
@@ -1851,7 +1896,11 @@ function copyText(text, btn) {
   if (btn) { const o=btn.textContent; btn.textContent='✓'; setTimeout(()=>btn.textContent=o,1500); }
 }
 function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// escAttr: safe for values inside onclick="copyText('VALUE',this)" — escapes backslash & single quote
+function escAttr(s) {
+  return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 }
 function uid() {
   return Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -2044,6 +2093,12 @@ async function submitPin() {
           const data = JSON.parse(dec);
           vault = data.vault || [];
           vaultMeta = data.meta || {};
+          // Restore custom categories from vault payload
+          if (Array.isArray(data.customCats) && data.customCats.length > 0) {
+            const defaultIds = DEFAULT_CATS.map(c=>c.id);
+            categories = [...DEFAULT_CATS.map(d=>({...d})), ...data.customCats.filter(c=>!defaultIds.includes(c.id))];
+            saveCats();
+          }
           // Fallback: pastikan encMasterBySeed ada dari vault_meta LS
           if (!vaultMeta.encMasterBySeed) {
             const _mls = loadVaultMeta();
@@ -2164,6 +2219,10 @@ function populateCatSelect(selectedId) {
 // ── CATEGORY CRUD ──────────────────────────────
 
 function openCatManager() {
+  // Reset add-new form state every time modal opens
+  document.getElementById('new-cat-name').value = '';
+  document.getElementById('new-cat-icon').value = '';
+  document.getElementById('new-cat-icon-preview').textContent = '🗂️';
   renderCatManager();
   document.getElementById('modal-cats').classList.add('open');
 }
@@ -2205,7 +2264,7 @@ function saveCatEdit(id) {
   const newLabel = inp.value.trim();
   if (!newLabel) { toast('⚠️ Nama tidak boleh kosong'); return; }
   const c = categories.find(c=>c.id===id);
-  if (c) { c.label = newLabel; saveCats(); renderCatManager(); render(); toast('✓ Nama diperbarui'); }
+  if (c) { c.label = newLabel; saveCats(); renderCatManager(); render(); toast('✓ Nama diperbarui'); if(autoSaveEnabled) scheduleAutoSave(); }
 }
 
 function openEmojiPicker(catId) {
@@ -2226,7 +2285,7 @@ function selectEmoji(emoji) {
 function applyEmoji(catId, emoji) {
   if (!emoji.trim()) return;
   const c = categories.find(c=>c.id===catId);
-  if (c) { c.icon = emoji.trim(); saveCats(); renderCatManager(); render(); }
+  if (c) { c.icon = emoji.trim(); saveCats(); renderCatManager(); render(); if(autoSaveEnabled) scheduleAutoSave(); }
   closeModal('modal-emoji');
   toast('✓ Icon diperbarui');
 }
@@ -2237,8 +2296,10 @@ function deleteCat(id) {
   const affected = vault.filter(e=>e.cat===id);
   if (affected.length === 0) {
     if (!confirm(`Hapus kategori "${c.label}"?`)) return;
+    if (currentFilter === id) currentFilter = 'semua'; // reset filter jika aktif
     categories = categories.filter(c=>c.id!==id);
     saveCats(); renderCatManager(); render();
+    if(autoSaveEnabled) scheduleAutoSave();
     toast(`🗑️ Kategori dihapus`);
     return;
   }
@@ -2257,6 +2318,7 @@ function openMoveCatDialog(fromId, fromLabel, count) {
   document.getElementById('move-cat-confirm').onclick = () => {
     const toId = sel.value;
     vault = vault.map(e => e.cat===fromId ? {...e, cat:toId} : e);
+    if (currentFilter === fromId) currentFilter = 'semua'; // reset filter jika aktif
     categories = categories.filter(c=>c.id!==fromId);
     saveCats(); if(autoSaveEnabled) scheduleAutoSave();
     closeModal('modal-move-cat');
@@ -2280,6 +2342,7 @@ function addNewCat() {
   saveCats();
   document.getElementById('new-cat-name').value = '';
   document.getElementById('new-cat-icon').value = '';
+  document.getElementById('new-cat-icon-preview').textContent = '🗂️'; // Reset preview
   renderCatManager(); render();
   toast(`✓ Kategori "${name}" ditambahkan`);
 }
@@ -2469,7 +2532,9 @@ async function saveToLocal() {
   // Save bahkan kalau vault kosong (supaya meta tersimpan)
   if (!autoSaveEnabled || !masterPw) return;
   try {
-    const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery, encMasterBySeed: vaultMeta.encMasterBySeed || '' } });
+    // Include custom categories in payload so they survive re-import
+    const customCats = categories.filter(c => !DEFAULT_CATS.find(d=>d.id===c.id));
+    const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery, encMasterBySeed: vaultMeta.encMasterBySeed || '' }, customCats });
     const encrypted = await ENC.encrypt(payload, masterPw);
     const saveData = JSON.stringify({ format: 'vault2', hint: vaultMeta.hint || '', data: encrypted, savedAt: new Date().toISOString(), count: vault.length });
     localStorage.setItem(LS_KEY, saveData);
