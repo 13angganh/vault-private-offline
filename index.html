@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vault v3 — Pencatat Akun Terenkripsi</title>
+<title>Vault v4 — Pencatat Akun Terenkripsi</title>
   <meta name="google-site-verification" content="ZlDZWReLCIEXxKtVby5wath_U_E_9jpaHXjQ1Hd_kWY" />
   <meta name="google-site-verification" content="Znvc8kFn7Vo2VAWwiI1l0eT0hH_dd4BJ_yrHrHTIywg" />
 
@@ -268,6 +268,17 @@ select option{background:var(--s2);}
 }
 .ibtn:hover{border-color:var(--gold);color:var(--text);background:var(--s2);}
 .ibtn.del:hover{border-color:var(--red);color:var(--red);}
+.ibtn.lock-btn:hover{border-color:#4d8eff;color:#4d8eff;}
+.ibtn.lock-btn.locked{border-color:#4d8eff;color:#4d8eff;background:rgba(77,142,255,.12);}
+
+/* Locked card overlay */
+.card.card-locked{opacity:.6;pointer-events:none;}
+.card.card-locked .ibtn.lock-btn{pointer-events:all;opacity:1;}
+.lock-badge{
+  font-size:9px;padding:2px 6px;border-radius:20px;
+  background:rgba(77,142,255,.15);color:#4d8eff;
+  font-family:var(--mono);font-weight:700;flex-shrink:0;margin-left:4px;
+}
 
 /* Expanded */
 .exp{
@@ -443,7 +454,7 @@ select option{background:var(--s2);}
 ══════════════════════════════════════ -->
 <div id="lock-screen">
   <div class="lock-logo">🔐</div>
-  <div class="lock-title">Vault <span style="color:var(--gold)">v3</span></div>
+  <div class="lock-title">Vault <span style="color:var(--gold)">v4</span></div>
   <div class="lock-subtitle">Pencatat akun terenkripsi · Sepenuhnya offline</div>
 
   <div class="lock-box">
@@ -642,7 +653,7 @@ select option{background:var(--s2);}
     <div class="logo">
       <div class="logo-icon">🔐</div>
       <div>
-        <div class="logo-name"><span>Vault</span><span class="logo-ver">v3</span></div>
+        <div class="logo-name"><span>Vault</span><span class="logo-ver">v4</span></div>
       </div>
     </div>
     <div class="header-actions">
@@ -654,6 +665,7 @@ select option{background:var(--s2);}
       </label>
       <button class="btn btn-ghost btn-sm" onclick="openInstallGuide()">📲 Install App</button>
       <button class="btn btn-ghost btn-sm" onclick="openCatManager()">🏷️ Kategori</button>
+      <button class="btn btn-ghost btn-sm" style="position:relative;" onclick="openRecycleBin()">🗑️ Recycle Bin<span id="recycle-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff4d6d;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center;align-items:center;justify-content:center;"></span></button>
       <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙️ Pengaturan</button>
       <button class="btn btn-danger btn-sm" onclick="lockApp()">🔒 Kunci</button>
       <button class="btn btn-gold btn-sm" onclick="openAdd()">+ Tambah</button>
@@ -930,6 +942,8 @@ let seedLen = 12;
 let expandedIds = new Set();
 let pwVisible = new Set();
 let seedVisible = new Set();
+let lockedIds = new Set();   // entry IDs yang dikunci dari edit/hapus
+let recycleBin = [];         // entry yang dihapus, belum permanen
 
 // Auto-lock state
 let autoLockMinutes = 0;
@@ -1173,6 +1187,9 @@ async function unlockVault() {
         categories = [...DEFAULT_CATS.map(d=>({...d})), ...data.customCats.filter(c=>!defaultIds.includes(c.id))];
         saveCats(); // keep vault_cats in sync
       }
+      // Restore locked entries and recycle bin
+      lockedIds = new Set(Array.isArray(data.lockedIds) ? data.lockedIds : []);
+      recycleBin = Array.isArray(data.recycleBin) ? data.recycleBin : [];
           // Fallback: pastikan encMasterBySeed ada dari vault_meta LS
           if (!vaultMeta.encMasterBySeed) {
             const _mls = loadVaultMeta();
@@ -1219,6 +1236,7 @@ function lockApp() {
   document.getElementById('unlock-err').style.display = 'none';
   document.getElementById('no-vault-msg').style.display = 'none';
   expandedIds.clear(); pwVisible.clear(); seedVisible.clear();
+  lockedIds.clear(); recycleBin = [];
   // Security: simpan ke LS dulu, baru clear memori
   if (masterPw && vault.length > 0) {
     _doSaveToLocal(); // simpan tanpa peduli flag autoSaveEnabled saat kunci manual
@@ -1315,6 +1333,9 @@ async function doRecovery() {
           categories = [...DEFAULT_CATS.map(d=>({...d})), ...data.customCats.filter(c=>!defaultIds.includes(c.id))];
           saveCats();
         }
+        // Restore locked entries and recycle bin
+        lockedIds = new Set(Array.isArray(data.lockedIds) ? data.lockedIds : []);
+        recycleBin = Array.isArray(data.recycleBin) ? data.recycleBin : [];
         // Pastikan encMasterBySeed ada
         if (!vaultMeta.encMasterBySeed && meta.encMasterBySeed) {
           vaultMeta.encMasterBySeed = meta.encMasterBySeed;
@@ -1352,6 +1373,8 @@ async function doRecovery() {
     encMasterBySeed: newEncMBS
   };
   vault = [];
+  lockedIds = new Set();
+  recycleBin = [];
   await _doSaveToLocal(); // bypass autoSaveEnabled — reset vault harus selalu tersimpan
   saveVaultMeta();
   localStorage.removeItem(LS_PIN);
@@ -1463,8 +1486,9 @@ function render() {
 
   renderFilterBar();
   filtered.forEach(e => {
+    const isLocked = lockedIds.has(e.id);
     const card = document.createElement('div');
-    card.className = 'card' + (e.cat==='crypto'?' crypto-card':'');
+    card.className = 'card' + (e.cat==='crypto'?' crypto-card':'') + (isLocked?' card-locked':'');
     card.dataset.id = e.id;
 
     const isOpen = expandedIds.has(e.id);
@@ -1475,24 +1499,27 @@ function render() {
       ? (e.walletAddr ? e.walletAddr.slice(0,18)+'…' : e.network||'Crypto')
       : (e.user||'');
 
+    const lockTitle = isLocked ? 'Unlock akun ini' : 'Kunci akun (cegah edit & hapus)';
+    const lockIcon  = isLocked ? '🔒' : '🔓';
+
     card.innerHTML = `
       <div class="avatar" style="background:${CAT_COLORS[catColorIdx(e.cat)]}">${catIcon(e.cat)}</div>
       <div class="card-info">
-        <div class="card-name">${esc(e.name)}<span class="chip" style="background:${CHIP_COLORS[catColorIdx(e.cat)].bg};color:${CHIP_COLORS[catColorIdx(e.cat)].fg}">${catIcon(e.cat)} ${catLabel(e.cat)}</span></div>
+        <div class="card-name">${esc(e.name)}<span class="chip" style="background:${CHIP_COLORS[catColorIdx(e.cat)].bg};color:${CHIP_COLORS[catColorIdx(e.cat)].fg}">${catIcon(e.cat)} ${catLabel(e.cat)}</span>${isLocked?'<span class="lock-badge">🔒 Terkunci</span>':''}</div>
         <div class="card-sub">${esc(sub)}</div>
       </div>
       <div class="card-btns">
         <button class="ibtn" title="Detail" onclick="toggleExp('${e.id}')">${isOpen?'🙈':'👁️'}</button>
-        <button class="ibtn" title="Edit" onclick="editEntry('${e.id}')">✏️</button>
-        <button class="ibtn del" title="Hapus" onclick="deleteEntry('${e.id}')">🗑️</button>
+        <button class="ibtn lock-btn${isLocked?' locked':''}" title="${lockTitle}" onclick="toggleLock('${e.id}')">${lockIcon}</button>
+        <button class="ibtn" title="Edit" onclick="editEntry('${e.id}')" ${isLocked?'style="opacity:.35;cursor:not-allowed;"':''}>✏️</button>
+        <button class="ibtn del" title="Hapus" onclick="deleteEntry('${e.id}')" ${isLocked?'style="opacity:.35;cursor:not-allowed;"':''}>🗑️</button>
       </div>
-      ${isOpen ? buildExpanded(e, isPwVis, isSeedVis) : ''}
+      ${isOpen && !isLocked ? buildExpanded(e, isPwVis, isSeedVis) : (isOpen && isLocked ? `<div class="exp" style="text-align:center;color:#4d8eff;font-size:12px;padding:14px;">🔒 Akun terkunci — unlock untuk melihat detail</div>` : '')}
     `;
     grid.appendChild(card);
   });
-}
-
-function buildExpanded(e, isPwVis, isSeedVis) {
+  updateRecycleBadge();
+}(e, isPwVis, isSeedVis) {
   if (e.cat === 'crypto') {
     const seeds = (e.seedPhrase||[]);
     const seedCount = seeds.length;
@@ -1664,16 +1691,124 @@ function saveEntry() {
   _doSaveToLocal();   // simpan langsung juga tanpa tunggu debounce
 }
 function editEntry(id) {
+  if (lockedIds.has(id)) { toast('🔒 Akun terkunci — unlock dulu sebelum edit'); return; }
   const e = vault.find(e=>e.id===id);
   if (e) openEntryModal(e);
 }
+
+// ════════════════════════════════
+// LOCK ENTRY
+// ════════════════════════════════
+function toggleLock(id) {
+  if (lockedIds.has(id)) {
+    lockedIds.delete(id);
+    toast('🔓 Akun tidak lagi terkunci');
+  } else {
+    lockedIds.add(id);
+    expandedIds.delete(id); // tutup detail saat dikunci
+    toast('🔒 Akun terkunci dari edit & hapus');
+  }
+  render();
+  _doSaveToLocal();
+}
+
+// ════════════════════════════════
+// RECYCLE BIN
+// ════════════════════════════════
+function updateRecycleBadge() {
+  const badge = document.getElementById('recycle-badge');
+  if (badge) {
+    badge.textContent = recycleBin.length;
+    badge.style.display = recycleBin.length > 0 ? 'inline-flex' : 'none';
+  }
+}
+
+function openRecycleBin() {
+  renderRecycleBin();
+  document.getElementById('modal-recycle').classList.add('open');
+}
+
+function renderRecycleBin() {
+  const list = document.getElementById('recycle-list');
+  const empty = document.getElementById('recycle-empty');
+  if (!list) return;
+  list.innerHTML = '';
+  if (recycleBin.length === 0) {
+    empty.style.display = 'block';
+    document.getElementById('recycle-empty-all').style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  document.getElementById('recycle-empty-all').style.display = 'flex';
+  recycleBin.slice().reverse().forEach((e, ri) => {
+    const realIdx = recycleBin.length - 1 - ri;
+    const deletedDate = e.deletedAt ? new Date(e.deletedAt).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short'}) : '—';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;background:#0e0f1a;border-radius:10px;padding:12px;margin-bottom:8px;';
+    row.innerHTML = `
+      <div style="font-size:22px;flex-shrink:0;">${catIcon(e.cat)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:#eeeef5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(e.name)}</div>
+        <div style="font-size:11px;color:#6b6d85;margin-top:2px;">${catLabel(e.cat)} · Dihapus ${deletedDate}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="ibtn" title="Pulihkan" onclick="restoreEntry(${realIdx})" style="color:#00d4aa;border-color:#00d4aa;width:auto;padding:0 10px;font-size:12px;font-weight:600;">↩ Pulihkan</button>
+        <button class="ibtn del" title="Hapus Permanen" onclick="permanentDelete(${realIdx})">🗑️</button>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function restoreEntry(idx) {
+  const e = recycleBin[idx];
+  if (!e) return;
+  // Cek duplicate id
+  if (vault.find(v=>v.id===e.id)) e.id = uid();
+  const { deletedAt, ...clean } = e;
+  vault.push(clean);
+  recycleBin.splice(idx, 1);
+  renderRecycleBin();
+  render();
+  updateRecycleBadge();
+  toast(`↩ "${clean.name}" dipulihkan`);
+  _doSaveToLocal();
+}
+
+function permanentDelete(idx) {
+  const e = recycleBin[idx];
+  if (!e) return;
+  if (confirm(`Hapus "${e.name}" secara permanen?\nData tidak bisa dipulihkan.`)) {
+    recycleBin.splice(idx, 1);
+    renderRecycleBin();
+    updateRecycleBadge();
+    toast('🗑️ Dihapus permanen');
+    _doSaveToLocal();
+  }
+}
+
+function emptyRecycleBin() {
+  if (recycleBin.length === 0) return;
+  if (confirm(`Hapus semua ${recycleBin.length} item di Recycle Bin secara permanen?\nTidak bisa dipulihkan.`)) {
+    recycleBin = [];
+    renderRecycleBin();
+    updateRecycleBadge();
+    toast('🗑️ Recycle Bin dikosongkan');
+    _doSaveToLocal();
+  }
+}
 function deleteEntry(id) {
+  if (lockedIds.has(id)) { toast('🔒 Akun terkunci — unlock dulu sebelum hapus'); return; }
   const e = vault.find(e=>e.id===id);
   if (!e) return;
-  if (confirm(`Hapus "${e.name}"? Tidak bisa dibatalkan.`)) {
-    vault = vault.filter(e=>e.id!==id);
+  if (confirm(`Pindahkan "${e.name}" ke Recycle Bin?\nBisa dipulihkan dari menu Recycle Bin.`)) {
+    recycleBin.push({ ...e, deletedAt: new Date().toISOString() });
+    vault = vault.filter(v=>v.id!==id);
+    lockedIds.delete(id);
     expandedIds.delete(id); pwVisible.delete(id); seedVisible.delete(id);
-    render(); toast('🗑️ Akun dihapus');
+    render();
+    updateRecycleBadge();
+    toast('🗑️ Dipindahkan ke Recycle Bin');
     _doSaveToLocal();
   }
 }
@@ -1791,7 +1926,9 @@ async function exportVault() {
       recoveryHash: vaultMeta.recoveryHash,
       recovery: vaultMeta.recovery || ''
     },
-    customCats
+    customCats,
+    lockedIds: [...lockedIds],
+    recycleBin
   });
   const encrypted = await ENC.encrypt(payload, masterPw);
   const fileData = JSON.stringify({
@@ -1820,78 +1957,81 @@ async function importVaultFile(event) {
   reader.onload = async (e) => {
     try {
       const parsed = JSON.parse(e.target.result);
-      // Detect format
       let incoming;
       let importedCustomCats = null;
+      let importedLockedIds = [];
+      let importedRecycleBin = [];
+
       if (parsed.format === 'vault2') {
-        // Encrypted vault
+        // Encrypted vault — decrypt dengan master password
+        const decryptWith = async (pw) => {
+          const dec = await ENC.decrypt(parsed.data, pw);
+          return JSON.parse(dec);
+        };
+
+        let data;
         if (!masterPw) {
-          // Prompt for password
           const pw = prompt('Masukkan master password untuk membuka file vault ini:');
           if (!pw) return;
-          try {
-            const dec = await ENC.decrypt(parsed.data, pw);
-            const data = JSON.parse(dec);
-            incoming = data.vault;
-            importedCustomCats = data.customCats || null;
-            // If no vault yet, set up state
-            if (!masterPw) {
-              masterPw = pw;
-              vaultMeta = { hint: parsed.hint||'', recoveryHash: data.meta?.recoveryHash||'' };
-            }
-          } catch {
-            alert('Password salah atau file rusak.'); return;
-          }
+          try { data = await decryptWith(pw); }
+          catch { alert('Password salah atau file rusak.'); return; }
+          masterPw = pw;
+          vaultMeta = { hint: parsed.hint||'', recoveryHash: data.meta?.recoveryHash||'', recovery: data.meta?.recovery||'', encMasterBySeed: data.meta?.encMasterBySeed||'' };
         } else {
-          try {
-            const dec = await ENC.decrypt(parsed.data, masterPw);
-            const data = JSON.parse(dec);
-            incoming = data.vault;
-            importedCustomCats = data.customCats || null;
-          } catch {
-            // Try asking for password
+          try { data = await decryptWith(masterPw); }
+          catch {
             const pw = prompt('Master password berbeda. Masukkan password file ini:');
             if (!pw) return;
-            try {
-              const dec = await ENC.decrypt(parsed.data, pw);
-              const data = JSON.parse(dec);
-              incoming = data.vault;
-              importedCustomCats = data.customCats || null;
-            } catch { alert('Password salah.'); return; }
+            try { data = await decryptWith(pw); }
+            catch { alert('Password salah.'); return; }
           }
         }
+        incoming           = data.vault;
+        importedCustomCats = data.customCats  || null;
+        importedLockedIds  = data.lockedIds   || [];
+        importedRecycleBin = data.recycleBin  || [];
       } else {
-        // Old plaintext format
+        // Format lama plaintext
         incoming = parsed.accounts || parsed;
       }
+
       if (!Array.isArray(incoming)) throw new Error('Format tidak valid');
-      // Restore custom categories from import
+
+      // Restore custom categories
       if (Array.isArray(importedCustomCats) && importedCustomCats.length > 0) {
         const defaultIds = DEFAULT_CATS.map(c=>c.id);
         const existCustomIds = new Set(categories.filter(c=>!defaultIds.includes(c.id)).map(c=>c.id));
         const newCats = importedCustomCats.filter(c=>!defaultIds.includes(c.id) && !existCustomIds.has(c.id));
-        if (newCats.length > 0) {
-          categories = [...categories, ...newCats];
-          saveCats();
-        }
+        if (newCats.length > 0) { categories = [...categories, ...newCats]; saveCats(); }
       }
+
       const valid = incoming.filter(a=>a.name);
-      if (!masterPw && valid.length>0) {
-        // vault was empty, just load
+      if (vault.length === 0) {
         vault = valid;
+        lockedIds  = new Set(importedLockedIds);
+        recycleBin = importedRecycleBin;
       } else {
         const mode = confirm(`Ditemukan ${valid.length} akun.\nOK = Gabungkan\nCancel = Ganti semua`);
         if (mode) {
           const existIds = new Set(vault.map(e=>e.id));
           vault.push(...valid.filter(a=>!existIds.has(a.id)));
-        } else { vault = valid; }
+          // Gabungkan lockedIds dan recycleBin (hindari duplikat)
+          importedLockedIds.forEach(id => lockedIds.add(id));
+          const existRecycleIds = new Set(recycleBin.map(r=>r.id));
+          recycleBin.push(...importedRecycleBin.filter(r=>!existRecycleIds.has(r.id)));
+        } else {
+          vault      = valid;
+          lockedIds  = new Set(importedLockedIds);
+          recycleBin = importedRecycleBin;
+        }
       }
-      // Go to main app if not there
+
       document.getElementById('lock-screen').style.display='none';
       document.getElementById('setup-screen').style.display='none';
       document.getElementById('main-app').style.display='block';
       render();
-      if (autoSaveEnabled && masterPw) scheduleAutoSave();
+      updateRecycleBadge();
+      _doSaveToLocal();
       toast(`✅ ${valid.length} akun diimpor!`);
     } catch(err) { alert('File tidak valid: '+err.message); }
   };
@@ -2127,6 +2267,9 @@ async function submitPin() {
             categories = [...DEFAULT_CATS.map(d=>({...d})), ...data.customCats.filter(c=>!defaultIds.includes(c.id))];
             saveCats();
           }
+          // Restore locked entries and recycle bin
+          lockedIds = new Set(Array.isArray(data.lockedIds) ? data.lockedIds : []);
+          recycleBin = Array.isArray(data.recycleBin) ? data.recycleBin : [];
           // Fallback: pastikan encMasterBySeed ada dari vault_meta LS
           if (!vaultMeta.encMasterBySeed) {
             const _mls = loadVaultMeta();
@@ -2198,6 +2341,7 @@ function openVaultAfterAuth() {
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   render();
+  updateRecycleBadge();
   if (autoLockMinutes > 0) scheduleAutoLock();
   // Generate encMasterBySeed jika belum ada (vault lama / upgrade otomatis)
   if (masterPw && vaultMeta.recovery && !vaultMeta.encMasterBySeed) {
@@ -2567,7 +2711,13 @@ async function _doSaveToLocal() {
   if (!masterPw) return; // vault belum dibuka, tidak ada yang bisa disimpan
   try {
     const customCats = categories.filter(c => !DEFAULT_CATS.find(d=>d.id===c.id));
-    const payload = JSON.stringify({ vault, meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery, encMasterBySeed: vaultMeta.encMasterBySeed || '' }, customCats });
+    const payload = JSON.stringify({
+      vault,
+      meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery, encMasterBySeed: vaultMeta.encMasterBySeed || '' },
+      customCats,
+      lockedIds: [...lockedIds],
+      recycleBin
+    });
     const encrypted = await ENC.encrypt(payload, masterPw);
     const saveData = JSON.stringify({ format: 'vault2', hint: vaultMeta.hint || '', data: encrypted, savedAt: new Date().toISOString(), count: vault.length });
     localStorage.setItem(LS_KEY, saveData);
@@ -3000,7 +3150,7 @@ window.addEventListener('load', () => {
           </button>
           <div style="font-size:10px;color:#4a4b5a;margin-top:6px;text-align:center;">Simpan 5 kata ini — bisa dipakai reset jika lupa master password</div>
         </div>
-      <div>📦 Vault v3.0</div>
+      <div>📦 Vault v4.0</div>
       <div style="margin-top:8px;font-size:11px;color:#4a4b5a;">⚠️ Auto-save menyimpan data terenkripsi di localStorage browser ini saja. Data tidak tersinkron ke perangkat lain — tetap gunakan Ekspor untuk backup.</div>
     </div>
   </div>
@@ -3133,6 +3283,38 @@ window.addEventListener('load', () => {
   <div id="emergency-backup-content"></div>
   <div style="margin-top:16px;padding-top:14px;border-top:1px solid #2b2d42;">
     <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-emergency-backup')">Tutup</button>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL RECYCLE BIN
+══════════════════════════════════════ -->
+<div class="overlay" id="modal-recycle">
+<div class="modal" style="max-width:480px;">
+  <div class="modal-title">🗑️ Recycle Bin</div>
+
+  <div style="font-size:12px;color:#9294ae;margin-bottom:16px;line-height:1.5;background:rgba(255,77,109,.06);border:1px solid rgba(255,77,109,.18);border-radius:10px;padding:10px 14px;">
+    ⚠️ Item di sini belum dihapus permanen. Pulihkan kapan saja, atau hapus permanen jika tidak diperlukan lagi.
+  </div>
+
+  <!-- Tombol kosongkan semua -->
+  <div id="recycle-empty-all" style="display:none;justify-content:flex-end;margin-bottom:12px;">
+    <button class="btn btn-danger btn-sm" onclick="emptyRecycleBin()">🗑️ Kosongkan Semua</button>
+  </div>
+
+  <!-- Daftar item -->
+  <div id="recycle-list" style="max-height:420px;overflow-y:auto;"></div>
+
+  <!-- Empty state -->
+  <div id="recycle-empty" style="text-align:center;padding:40px 20px;color:#4a4b5a;">
+    <div style="font-size:40px;margin-bottom:12px;">🗑️</div>
+    <div style="font-size:14px;font-weight:700;color:#6b6d85;">Recycle Bin kosong</div>
+    <div style="font-size:12px;margin-top:6px;">Akun yang dihapus akan muncul di sini</div>
+  </div>
+
+  <div style="margin-top:16px;padding-top:14px;border-top:1px solid #2b2d42;">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="closeModal('modal-recycle')">Tutup</button>
   </div>
 </div>
 </div>
