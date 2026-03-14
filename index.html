@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Vault v4 — Pencatat Akun Terenkripsi</title>
   <meta name="google-site-verification" content="ZlDZWReLCIEXxKtVby5wath_U_E_9jpaHXjQ1Hd_kWY" />
   <meta name="google-site-verification" content="Znvc8kFn7Vo2VAWwiI1l0eT0hH_dd4BJ_yrHrHTIywg" />
@@ -191,6 +191,7 @@ select option{background:var(--s2);}
   padding:11px 18px;border-radius:10px;border:none;
   cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:600;
   transition:all .2s;display:flex;align-items:center;gap:6px;white-space:nowrap;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
 }
 .btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#000;}
 .btn-gold:hover{opacity:.85;transform:translateY(-1px);}
@@ -265,6 +266,7 @@ select option{background:var(--s2);}
   border:1px solid var(--border);background:transparent;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
   font-size:14px;color:var(--muted);transition:all .2s;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
 }
 .ibtn:hover{border-color:var(--gold);color:var(--text);background:var(--s2);}
 .ibtn.del:hover{border-color:var(--red);color:var(--red);}
@@ -426,6 +428,7 @@ select option{background:var(--s2);}
   background:#0e0f1a;border:1px solid #2b2d42;border-radius:14px;
   color:#eeeef5;font-family:Outfit,sans-serif;font-size:22px;font-weight:600;
   padding:18px 10px;cursor:pointer;transition:all .12s;user-select:none;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
 }
 .pin-key:active,.pin-key:hover{background:#1e1f2e;border-color:#f0a500;color:#f0a500;transform:scale(.95);}
 .pin-key-fn{font-size:16px;color:#9294ae;}
@@ -2902,23 +2905,43 @@ function setInstallTabByName(name) {
 }
 
 // ════════════════════════════════
-// PWA — Service Worker + Install Banner
+// PWA — Service Worker + Auto Update
 // ════════════════════════════════
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/vault-private-offline/sw.js',{scope:'/vault-private-offline/'}).then(reg=>{
-    reg.onupdatefound = () => {
-      const newSW = reg.installing;
-      newSW.onstatechange = () => {
-        if(newSW.state==='installed'&&navigator.serviceWorker.controller){
-          toast('🔄 Update tersedia — refresh untuk memperbarui');
-        }
-      };
-    };
-  });
-  navigator.serviceWorker.addEventListener('message',e=>{
-    if(e.data&&e.data.type==='SW_UPDATED') {
-      // Jangan hard reload — bisa interrupt setup atau hapus state dari memory
-      toast('🔄 Vault diperbarui di background. Refresh manual jika diperlukan.');
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/vault-private-offline/sw.js', { scope: '/vault-private-offline/' })
+    .then(reg => {
+      // Cek update setiap kali halaman di-focus (user kembali ke tab/app)
+      const checkUpdate = () => reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') checkUpdate();
+      });
+
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            // SW baru sudah siap — minta langsung aktif tanpa tunggu tab ditutup
+            newSW.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    })
+    .catch(() => {});
+
+  // Saat SW baru aktif → reload halaman otomatis agar dapat file terbaru
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    // Tunda sebentar agar tidak interrupt saat user sedang input
+    const doReload = () => window.location.reload();
+    if (masterPw) {
+      // Vault sedang terbuka — tampilkan notif dulu, reload setelah 3 detik
+      toast('🔄 Update tersedia — memperbarui otomatis...');
+      setTimeout(doReload, 3000);
+    } else {
+      // Di lock screen — reload langsung
+      doReload();
     }
   });
 }

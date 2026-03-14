@@ -1,5 +1,14 @@
-const CACHE = "vault-v3";
-const ASSETS = ["/vault-private-offline/", "/vault-private-offline/index.html", "/vault-private-offline/manifest.json", "/vault-private-offline/icon-192.png", "/vault-private-offline/icon-512.png"];
+// CACHE_VERSION di-inject otomatis oleh GitHub Actions saat deploy
+// Jangan edit manual — nilai ini berubah sendiri setiap push
+const CACHE = "vault-v4-__CACHE_VERSION__";
+
+const ASSETS = [
+  "/vault-private-offline/",
+  "/vault-private-offline/index.html",
+  "/vault-private-offline/manifest.json",
+  "/vault-private-offline/icon-192.png",
+  "/vault-private-offline/icon-512.png"
+];
 
 self.addEventListener("install", e => {
   e.waitUntil(
@@ -16,25 +25,41 @@ self.addEventListener("activate", e => {
         keys.filter(k => k !== CACHE).map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
-      .then(() => {
-        self.clients.matchAll().then(clients => {
-          clients.forEach(client => client.postMessage({type: "SW_UPDATED"}));
-        });
-      })
   );
 });
 
 self.addEventListener("fetch", e => {
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        if (!res || res.status !== 200 || res.type !== "basic") return res;
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(e.request).then(r => r || caches.match("/vault-private-offline/index.html")))
-  );
+  const url = new URL(e.request.url);
+  const isHTML = e.request.destination === 'document'
+              || url.pathname.endsWith('.html')
+              || url.pathname.endsWith('/');
+
+  if (isHTML) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res && res.status === 200) {
+            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          }
+          return res;
+        })
+        .catch(() => caches.match(e.request)
+          .then(r => r || caches.match("/vault-private-offline/index.html"))
+        )
+    );
+  } else {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        if (cached) return cached;
+        return fetch(e.request).then(res => {
+          if (res && res.status === 200) {
+            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          }
+          return res;
+        });
+      }).catch(() => caches.match("/vault-private-offline/index.html"))
+    );
+  }
 });
 
 self.addEventListener("message", e => {

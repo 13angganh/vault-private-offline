@@ -104,6 +104,25 @@ Gratis, CDN global, custom domain gratis, tanpa batas bandwidth.
 
 ---
 
+### 🔄 Auto-Update PWA — Otomatis via GitHub Actions
+
+Vault menggunakan Service Worker agar bisa dipakai offline. Nilai `CACHE` di `sw.js` **diupdate otomatis** setiap kali ada push ke branch `main` — tidak perlu edit manual apapun.
+
+**Cara kerjanya:**
+1. Push file ke GitHub seperti biasa
+2. GitHub Actions otomatis inject timestamp ke `sw.js` (contoh: `vault-v4-20250320143022`)
+3. Browser deteksi `sw.js` berubah → download Service Worker baru
+4. SW baru aktif → app di HP **reload otomatis** — user langsung dapat versi terbaru
+
+**Setup sekali (pertama kali):**
+- Pastikan file `.github/workflows/deploy.yml` ikut di-push ke repo
+- Buka repo GitHub → tab **Actions** → pastikan workflow tidak di-disable
+- Selesai — selanjutnya setiap push akan auto-update
+
+> Tidak perlu sentuh `sw.js` sama sekali. GitHub Actions yang mengurus semuanya.
+
+---
+
 ## 📱 Install ke Layar Beranda
 
 **Android (Chrome):**
@@ -131,6 +150,10 @@ Gratis, CDN global, custom domain gratis, tanpa batas bandwidth.
 ### v4.0
 - ✨ **Fitur Lock per-akun** — kunci akun individual dari edit & hapus
 - ✨ **Recycle Bin** — akun terhapus bisa dipulihkan, hapus permanen dari recycle bin
+- ✨ **Auto-update PWA** — app di HP otomatis reload saat ada deploy baru
+- 🐛 Fix SW cache `vault-v3` → `vault-v4` menyebabkan versi lama terus di-load
+- 🐛 Fix PIN tidak bisa diinput di Android PWA (missing `touch-action:manipulation`)
+- 🐛 Fix viewport tanpa `user-scalable=no` menyebabkan 300ms tap delay
 - 🐛 Fix toggle Auto-save tidak bisa diaktifkan (double-fire checkbox)
 - 🐛 Fix data hilang setelah restart (semua operasi data kini selalu tersimpan)
 - 🐛 Fix tombol "Simpan Sekarang" tidak bekerja saat toggle off
@@ -138,7 +161,7 @@ Gratis, CDN global, custom domain gratis, tanpa batas bandwidth.
 - 🐛 Fix `pinAttempts` & `pinLocked` tidak di-reset setelah auto-lock
 - 🐛 Fix empty state text tidak kontekstual (filter vs kosong vs pencarian)
 - 🐛 Fix `recovery-newpw` tidak reset visibility saat panel dibuka ulang
-- 🐛 Fix `importVaultFile` membaca lockedIds/recycleBin dari data terenkripsi bukan outer JSON
+- 🐛 Fix `importVaultFile` membaca lockedIds/recycleBin dari outer JSON bukan data terenkripsi
 - 🐛 Fix syntax error `function buildExpanded` kehilangan keyword `function`
 
 ### v3.1 *(internal)*
