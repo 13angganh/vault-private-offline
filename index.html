@@ -1519,7 +1519,9 @@ function render() {
     grid.appendChild(card);
   });
   updateRecycleBadge();
-}(e, isPwVis, isSeedVis) {
+}
+
+function buildExpanded(e, isPwVis, isSeedVis) {
   if (e.cat === 'crypto') {
     const seeds = (e.seedPhrase||[]);
     const seedCount = seeds.length;
