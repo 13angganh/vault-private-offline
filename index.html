@@ -276,6 +276,7 @@ select option{background:var(--s2);}
 /* Locked card - hanya redup sedikit, semua tombol tetap bisa diklik */
 .card.card-locked{opacity:.85;}
 .card.card-locked .ibtn.lock-btn{pointer-events:all;opacity:1;}
+.ibtn.ibtn-disabled{opacity:.3;pointer-events:none;cursor:default;}
 .lock-badge{
   font-size:9px;padding:2px 6px;border-radius:20px;
   background:rgba(77,142,255,.15);color:#4d8eff;
@@ -1514,8 +1515,8 @@ function render() {
       <div class="card-btns">
         <button class="ibtn" title="Detail" onclick="toggleExp('${e.id}')">${isOpen?'🙈':'👁️'}</button>
         <button class="ibtn lock-btn${isLocked?' locked':''}" title="${lockTitle}" onclick="toggleLock('${e.id}')">${lockIcon}</button>
-        <button class="ibtn" title="Edit" onclick="editEntry('${e.id}')" ${isLocked?'style="opacity:.35;cursor:not-allowed;"':''}>✏️</button>
-        <button class="ibtn del" title="Hapus" onclick="deleteEntry('${e.id}')" ${isLocked?'style="opacity:.35;cursor:not-allowed;"':''}>🗑️</button>
+        <button class="ibtn" title="Edit" onclick="editEntry('${e.id}')" ${isLocked?'class="ibtn ibtn-disabled"':''}>✏️</button>
+        <button class="ibtn del" title="Hapus" onclick="deleteEntry('${e.id}')" ${isLocked?'class="ibtn del ibtn-disabled"':''}>🗑️</button>
       </div>
       ${isOpen ? buildExpanded(e, isPwVis, isSeedVis) : ''}
     `;
