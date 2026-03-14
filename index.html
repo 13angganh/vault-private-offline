@@ -1660,7 +1660,8 @@ function saveEntry() {
   }
   closeModal('modal-entry');
   render();
-  if(autoSaveEnabled) scheduleAutoSave();
+  scheduleAutoSave(); // selalu jadwalkan save — guard ada di saveToLocal
+  _doSaveToLocal();   // simpan langsung juga tanpa tunggu debounce
 }
 function editEntry(id) {
   const e = vault.find(e=>e.id===id);
@@ -1673,7 +1674,7 @@ function deleteEntry(id) {
     vault = vault.filter(e=>e.id!==id);
     expandedIds.delete(id); pwVisible.delete(id); seedVisible.delete(id);
     render(); toast('🗑️ Akun dihapus');
-    if(autoSaveEnabled) scheduleAutoSave();
+    _doSaveToLocal();
   }
 }
 
@@ -1752,7 +1753,7 @@ async function importFromText() {
     const merged = incoming.filter(e=>!existIds.has(e.id));
     vault.push(...merged);
     render();
-    if (autoSaveEnabled) scheduleAutoSave();
+    _doSaveToLocal();
     closeModal('modal-sync');
     toast(`✅ ${merged.length} akun baru ditambahkan!`);
   } catch(e) {
@@ -2203,8 +2204,7 @@ function openVaultAfterAuth() {
     ENC.encrypt(masterPw, vaultMeta.recovery).then(enc => {
       vaultMeta.encMasterBySeed = enc;
       saveVaultMeta();
-      if (autoSaveEnabled) saveToLocal();
-      console.log('[Vault] encMasterBySeed generated — login via seed phrase sekarang aktif');
+      _doSaveToLocal();
     }).catch(() => {});
   }
 }
@@ -2291,7 +2291,7 @@ function saveCatEdit(id) {
   const newLabel = inp.value.trim();
   if (!newLabel) { toast('⚠️ Nama tidak boleh kosong'); return; }
   const c = categories.find(c=>c.id===id);
-  if (c) { c.label = newLabel; saveCats(); renderCatManager(); render(); toast('✓ Nama diperbarui'); if(autoSaveEnabled) scheduleAutoSave(); }
+  if (c) { c.label = newLabel; saveCats(); renderCatManager(); render(); toast('✓ Nama diperbarui'); _doSaveToLocal(); }
 }
 
 function openEmojiPicker(catId) {
@@ -2312,7 +2312,7 @@ function selectEmoji(emoji) {
 function applyEmoji(catId, emoji) {
   if (!emoji.trim()) return;
   const c = categories.find(c=>c.id===catId);
-  if (c) { c.icon = emoji.trim(); saveCats(); renderCatManager(); render(); if(autoSaveEnabled) scheduleAutoSave(); }
+  if (c) { c.icon = emoji.trim(); saveCats(); renderCatManager(); render(); _doSaveToLocal(); }
   closeModal('modal-emoji');
   toast('✓ Icon diperbarui');
 }
@@ -2323,10 +2323,10 @@ function deleteCat(id) {
   const affected = vault.filter(e=>e.cat===id);
   if (affected.length === 0) {
     if (!confirm(`Hapus kategori "${c.label}"?`)) return;
-    if (currentFilter === id) currentFilter = 'semua'; // reset filter jika aktif
+    if (currentFilter === id) currentFilter = 'semua';
     categories = categories.filter(c=>c.id!==id);
     saveCats(); renderCatManager(); render();
-    if(autoSaveEnabled) scheduleAutoSave();
+    _doSaveToLocal();
     toast(`🗑️ Kategori dihapus`);
     return;
   }
@@ -2345,9 +2345,9 @@ function openMoveCatDialog(fromId, fromLabel, count) {
   document.getElementById('move-cat-confirm').onclick = () => {
     const toId = sel.value;
     vault = vault.map(e => e.cat===fromId ? {...e, cat:toId} : e);
-    if (currentFilter === fromId) currentFilter = 'semua'; // reset filter jika aktif
+    if (currentFilter === fromId) currentFilter = 'semua';
     categories = categories.filter(c=>c.id!==fromId);
-    saveCats(); if(autoSaveEnabled) scheduleAutoSave();
+    saveCats(); _doSaveToLocal();
     closeModal('modal-move-cat');
     closeModal('modal-cats');
     setTimeout(openCatManager, 100);
@@ -2369,8 +2369,9 @@ function addNewCat() {
   saveCats();
   document.getElementById('new-cat-name').value = '';
   document.getElementById('new-cat-icon').value = '';
-  document.getElementById('new-cat-icon-preview').textContent = '🗂️'; // Reset preview
+  document.getElementById('new-cat-icon-preview').textContent = '🗂️';
   renderCatManager(); render();
+  _doSaveToLocal();
   toast(`✓ Kategori "${name}" ditambahkan`);
 }
 
@@ -2599,16 +2600,7 @@ function setAutoSaveUI(enabled) {
 
 function toggleAutoSave(enabled) {
   autoSaveEnabled = enabled;
-  // Sync checkbox state (tanpa trigger onchange lagi)
-  const tog = document.getElementById('autosave-toggle');
-  if (tog && tog.checked !== enabled) tog.checked = enabled;
-  // Update visual toggle
-  const slider = document.getElementById('autosave-slider');
-  const knob = document.getElementById('autosave-knob');
-  const label = document.getElementById('autosave-label');
-  if (slider) slider.style.background = enabled ? '#f0a500' : '#2b2d42';
-  if (knob) knob.style.transform = enabled ? 'translateX(20px)' : 'translateX(0)';
-  if (label) label.textContent = enabled ? 'Aktif' : 'Nonaktif';
+  setAutoSaveUI(enabled);
   try { localStorage.setItem('vault_autosave_enabled', enabled ? '1' : '0'); } catch(e) {}
 }
 
@@ -2685,8 +2677,6 @@ function openSettings() {
   const asEnabled = localStorage.getItem('vault_autosave_enabled');
   const isEnabled = asEnabled !== '0'; // default true jika belum pernah disimpan
   autoSaveEnabled = isEnabled;
-  const tog = document.getElementById('autosave-toggle');
-  if (tog) tog.checked = isEnabled;
   setAutoSaveUI(isEnabled);
   document.getElementById('modal-settings').classList.add('open');
 }
@@ -2978,16 +2968,14 @@ window.addEventListener('load', () => {
   <div style="margin-bottom:22px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <div style="font-size:13px;font-weight:700;color:#eeeef5;">💾 Auto-Save Lokal</div>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="onAutoSaveToggle(!autoSaveEnabled)">
         <span style="font-size:12px;color:#9294ae;" id="autosave-label">Aktif</span>
-        <div style="position:relative;width:44px;height:24px;">
-          <input type="checkbox" id="autosave-toggle" checked onchange="onAutoSaveToggle(this.checked)"
-            style="opacity:0;width:0;height:0;position:absolute;">
-          <div id="autosave-slider" style="position:absolute;inset:0;background:#f0a500;border-radius:12px;transition:background .2s;cursor:pointer;" onclick="document.getElementById('autosave-toggle').click()">
+        <div style="position:relative;width:44px;height:24px;flex-shrink:0;">
+          <div id="autosave-slider" style="position:absolute;inset:0;background:#f0a500;border-radius:12px;transition:background .2s;">
             <div id="autosave-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:white;border-radius:50%;transition:transform .2s;transform:translateX(20px);"></div>
           </div>
         </div>
-      </label>
+      </div>
     </div>
     <div style="font-size:12px;color:#9294ae;margin-bottom:10px;line-height:1.5;">Data terenkripsi otomatis disimpan di browser. Tidak perlu ekspor manual setiap saat.</div>
     <div id="autosave-info" style="background:#0e0f1a;border-radius:10px;padding:12px;font-size:12px;color:#6b6d85;line-height:1.6;">
