@@ -147,6 +147,12 @@ Vault menggunakan Service Worker agar bisa dipakai offline. Nilai `CACHE` di `sw
 
 ## 📋 Changelog
 
+### v4.2
+- ✨ **Mode input seed phrase "Sekaligus"** — ketik/paste semua kata dalam satu textarea, tidak perlu pindah baris tiap kata
+- ✨ Counter kata realtime di mode sekaligus (hijau jika tepat 12/24 kata)
+- ✨ Sinkronisasi dua arah antara mode Per Kata dan Sekaligus
+- ✨ Auto-deteksi panjang seed (12/24) saat paste di mode sekaligus
+
 ### v4.1
 - ✨ **Pengingat Backup Otomatis** — banner muncul jika ada perubahan data & belum backup sesuai interval
 - ✨ **Backup via Share Sheet** — satu tap kirim file `.vault` ke WhatsApp, Telegram, Google Drive, dll (Web Share API)
