@@ -1,6 +1,6 @@
 // CACHE_VERSION di-inject otomatis oleh GitHub Actions saat deploy
 // Jangan edit manual — nilai ini berubah sendiri setiap push
-const CACHE = "vault-v4-__CACHE_VERSION__";
+const CACHE = "vault-v4-20260321202515";
 
 const ASSETS = [
   "/vault-private-offline/",
