@@ -698,6 +698,21 @@ select option{background:var(--s2);}
     <!-- Rendered by renderFilterBar() -->
   </div>
 
+  <!-- BACKUP REMINDER BANNER -->
+  <div id="backup-banner" style="display:none;margin-bottom:12px;border-radius:14px;padding:14px 16px;border:1px solid rgba(255,77,109,.35);background:rgba(255,77,109,.07);animation:fadeUp .3s ease;">
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+      <div style="font-size:22px;flex-shrink:0;" id="backup-banner-icon">⚠️</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:#eeeef5;margin-bottom:3px;" id="backup-banner-title">Belum pernah backup!</div>
+        <div style="font-size:12px;color:#9294ae;line-height:1.5;margin-bottom:10px;" id="backup-banner-desc">Jika browser dihapus datanya, semua akun hilang permanen. Backup sekarang ke file manager, WhatsApp, Telegram, atau Google Drive.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm" onclick="backupNow()" style="background:linear-gradient(135deg,#f0a500,#ffcc44);color:#000;border:none;font-weight:700;touch-action:manipulation;">💾 Backup Sekarang</button>
+          <button class="btn btn-ghost btn-sm" onclick="dismissBackupBanner()" style="touch-action:manipulation;">Nanti</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="cards" id="cards">
     <div class="empty" id="empty">
       <div class="empty-ico">🗄️</div>
@@ -948,6 +963,14 @@ let pwVisible = new Set();
 let seedVisible = new Set();
 let lockedIds = new Set();   // entry IDs yang dikunci dari edit/hapus
 let recycleBin = [];         // entry yang dihapus, belum permanen
+
+// Backup reminder state
+const LS_BACKUP   = 'vault_last_backup';    // timestamp backup terakhir
+const LS_BKPDATA  = 'vault_last_data_hash'; // hash data saat backup (deteksi perubahan)
+const LS_BKPIVL   = 'vault_backup_interval'; // interval pengingat dalam jam
+const LS_BKPDISM  = 'vault_backup_dismissed'; // timestamp terakhir dismiss
+let backupIntervalHrs = 24; // default 24 jam
+let backupDismissedAt = 0;
 
 // Auto-lock state
 let autoLockMinutes = 0;
@@ -1236,6 +1259,9 @@ function lockApp() {
   removeCountdownBanner();
   document.getElementById('main-app').style.display = 'none';
   document.getElementById('lock-screen').style.display = 'flex';
+  // Sembunyikan backup banner saat terkunci
+  const bb = document.getElementById('backup-banner');
+  if (bb) bb.style.display = 'none';
   document.getElementById('unlock-pw').value = '';
   document.getElementById('unlock-err').style.display = 'none';
   document.getElementById('no-vault-msg').style.display = 'none';
@@ -1693,8 +1719,11 @@ function saveEntry() {
   }
   closeModal('modal-entry');
   render();
-  scheduleAutoSave(); // selalu jadwalkan save — guard ada di saveToLocal
-  _doSaveToLocal();   // simpan langsung juga tanpa tunggu debounce
+  scheduleAutoSave();
+  _doSaveToLocal();
+  // Tandai data berubah untuk backup reminder
+  try { localStorage.setItem(LS_BKPDATA+'_pending', _vaultDataHash()); } catch(e) {}
+  checkBackupReminder();
 }
 function editEntry(id) {
   if (lockedIds.has(id)) { toast('🔒 Akun terkunci — unlock dulu sebelum edit'); return; }
@@ -1816,6 +1845,7 @@ function deleteEntry(id) {
     updateRecycleBadge();
     toast('🗑️ Dipindahkan ke Recycle Bin');
     _doSaveToLocal();
+    checkBackupReminder();
   }
 }
 
@@ -1951,10 +1981,213 @@ async function exportVault() {
   a.download = `vault-backup-${new Date().toISOString().slice(0,10)}.vault`;
   a.click();
   URL.revokeObjectURL(url);
+  recordBackupDone();
   const msg = vault.length > 0
     ? `💾 Backup berhasil! (${vault.length} akun terenkripsi)`
     : '💾 Backup berhasil! (meta & recovery tersimpan)';
   toast(msg);
+}
+
+// ════════════════════════════════
+// BACKUP REMINDER SYSTEM
+// ════════════════════════════════
+
+// Buat file .vault blob — dipakai oleh backupNow dan share
+async function _buildVaultBlob() {
+  const customCats = categories.filter(c => !DEFAULT_CATS.find(d=>d.id===c.id));
+  const payload = JSON.stringify({
+    vault,
+    meta: { hint: vaultMeta.hint, recoveryHash: vaultMeta.recoveryHash, recovery: vaultMeta.recovery || '' },
+    customCats, lockedIds: [...lockedIds], recycleBin
+  });
+  const encrypted = await ENC.encrypt(payload, masterPw);
+  const fileData = JSON.stringify({
+    format: 'vault2', hint: vaultMeta.hint || '',
+    data: encrypted, count: vault.length,
+    exportedAt: new Date().toISOString()
+  });
+  return new Blob([fileData], { type: 'application/json' });
+}
+
+// Hitung hash sederhana dari data vault untuk deteksi perubahan
+function _vaultDataHash() {
+  try {
+    return btoa(encodeURIComponent(JSON.stringify({ v: vault.length, r: recycleBin.length, l: lockedIds.size, ids: vault.map(e=>e.id).join(',') }))).slice(0, 32);
+  } catch(e) { return Date.now().toString(36); }
+}
+
+// Catat backup berhasil dilakukan
+function recordBackupDone() {
+  const now = Date.now();
+  try {
+    localStorage.setItem(LS_BACKUP,  now.toString());
+    localStorage.setItem(LS_BKPDATA, _vaultDataHash());
+  } catch(e) {}
+  backupDismissedAt = 0;
+  try { localStorage.removeItem(LS_BKPDISM); } catch(e) {}
+  checkBackupReminder();
+  updateBackupStatusUI();
+}
+
+// Cek apakah perlu tampilkan banner pengingat
+function checkBackupReminder() {
+  const banner = document.getElementById('backup-banner');
+  if (!banner || !masterPw) return;
+
+  const lastBackup   = parseInt(localStorage.getItem(LS_BACKUP)  || '0');
+  const lastDataHash = localStorage.getItem(LS_BKPDATA) || '';
+  const dismissed    = parseInt(localStorage.getItem(LS_BKPDISM) || '0');
+  const intervalMs   = backupIntervalHrs * 60 * 60 * 1000;
+  const now          = Date.now();
+  const currentHash  = _vaultDataHash();
+  const dataChanged  = lastDataHash !== currentHash;
+  const neverBackup  = lastBackup === 0;
+  const overdueMs    = now - lastBackup;
+  const isOverdue    = overdueMs > intervalMs;
+
+  // Jika baru dismiss kurang dari 6 jam, jangan tampilkan lagi
+  if (dismissed > 0 && (now - dismissed) < 6 * 60 * 60 * 1000) {
+    banner.style.display = 'none'; return;
+  }
+
+  // Tampilkan jika: belum pernah backup, atau data berubah + sudah melewati interval
+  if (neverBackup) {
+    banner.style.display = 'block';
+    const icon  = document.getElementById('backup-banner-icon');
+    const title = document.getElementById('backup-banner-title');
+    const desc  = document.getElementById('backup-banner-desc');
+    if (icon)  icon.textContent  = '🚨';
+    if (title) title.textContent = 'Belum pernah backup!';
+    if (desc)  desc.textContent  = 'Data bisa hilang permanen jika browser dihapus datanya. Backup sekarang ke file manager, WhatsApp, Telegram, atau Google Drive.';
+    banner.style.borderColor = 'rgba(255,77,109,.5)';
+    banner.style.background  = 'rgba(255,77,109,.09)';
+  } else if (dataChanged && isOverdue) {
+    banner.style.display = 'block';
+    const icon  = document.getElementById('backup-banner-icon');
+    const title = document.getElementById('backup-banner-title');
+    const desc  = document.getElementById('backup-banner-desc');
+    const hoursAgo = Math.round(overdueMs / 3600000);
+    const timeStr  = hoursAgo < 24 ? `${hoursAgo} jam` : `${Math.round(hoursAgo/24)} hari`;
+    if (icon)  icon.textContent  = '⚠️';
+    if (title) title.textContent = `Backup sudah ${timeStr} yang lalu`;
+    if (desc)  desc.textContent  = `Ada perubahan data sejak backup terakhir. Backup sekarang agar tetap aman meski browser dihapus.`;
+    banner.style.borderColor = 'rgba(240,165,0,.35)';
+    banner.style.background  = 'rgba(240,165,0,.07)';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function dismissBackupBanner() {
+  const banner = document.getElementById('backup-banner');
+  if (banner) banner.style.display = 'none';
+  const now = Date.now();
+  backupDismissedAt = now;
+  try { localStorage.setItem(LS_BKPDISM, now.toString()); } catch(e) {}
+}
+
+// Backup utama — pakai Web Share API jika tersedia (Android/iOS share sheet)
+// fallback ke download file biasa
+async function backupNow() {
+  if (!masterPw) { toast('⚠️ Buka vault dulu'); return; }
+  try {
+    const blob     = await _buildVaultBlob();
+    const filename = `vault-backup-${new Date().toISOString().slice(0,10)}.vault`;
+    const file     = new File([blob], filename, { type: 'application/json' });
+
+    // Coba Web Share API (Android/iOS native share sheet — WhatsApp, Telegram, Drive, dll)
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        title: 'Vault Backup',
+        text:  'File backup Vault — simpan di tempat aman.',
+        files: [file]
+      });
+      recordBackupDone();
+      toast('✅ Backup berhasil dibagikan!');
+    } else {
+      // Fallback: download ke file manager
+      _downloadVaultFile(blob, filename);
+      recordBackupDone();
+    }
+  } catch(e) {
+    // User cancel share = tidak ada error
+    if (e.name !== 'AbortError') {
+      // Share tidak support file, fallback ke download
+      try {
+        const blob     = await _buildVaultBlob();
+        const filename = `vault-backup-${new Date().toISOString().slice(0,10)}.vault`;
+        _downloadVaultFile(blob, filename);
+        recordBackupDone();
+      } catch(e2) { toast('⚠️ Gagal backup: ' + e2.message); }
+    }
+  }
+}
+
+function _downloadVaultFile(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href    = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('💾 File backup tersimpan!');
+}
+
+// Update UI status backup di settings modal
+function updateBackupStatusUI() {
+  const lastBackup  = parseInt(localStorage.getItem(LS_BACKUP) || '0');
+  const lastHash    = localStorage.getItem(LS_BKPDATA) || '';
+  const currentHash = masterPw ? _vaultDataHash() : '';
+
+  const elTime   = document.getElementById('last-backup-time');
+  const elStatus = document.getElementById('backup-status-text');
+  if (!elTime || !elStatus) return;
+
+  if (lastBackup === 0) {
+    elTime.textContent   = 'Belum pernah';
+    elTime.style.color   = '#ff4d6d';
+    elStatus.textContent = '🚨 Belum pernah backup — data berisiko hilang!';
+    elStatus.style.color = '#ff4d6d';
+    return;
+  }
+
+  const now       = Date.now();
+  const diffMs    = now - lastBackup;
+  const diffHrs   = Math.round(diffMs / 3600000);
+  const timeLabel = diffHrs < 1 ? 'Baru saja' : diffHrs < 24 ? `${diffHrs} jam lalu` : `${Math.round(diffHrs/24)} hari lalu`;
+  elTime.textContent = timeLabel;
+  elTime.style.color = diffHrs > backupIntervalHrs ? '#f0a500' : '#00d4aa';
+
+  const dataChanged = masterPw && currentHash && lastHash !== currentHash;
+  const isOverdue   = diffMs > backupIntervalHrs * 3600000;
+  if (dataChanged && isOverdue) {
+    elStatus.textContent = '⚠️ Ada perubahan data, perlu backup ulang';
+    elStatus.style.color = '#f0a500';
+  } else if (dataChanged) {
+    elStatus.textContent = '🔵 Ada perubahan data sejak backup terakhir';
+    elStatus.style.color = '#4d8eff';
+  } else {
+    elStatus.textContent = '✅ Data aman, backup masih valid';
+    elStatus.style.color = '#00d4aa';
+  }
+}
+
+// Set interval pengingat backup
+function setBackupInterval(hrs, btn) {
+  backupIntervalHrs = hrs;
+  try { localStorage.setItem(LS_BKPIVL, hrs.toString()); } catch(e) {}
+  // Update visual button
+  document.querySelectorAll('.bkp-btn').forEach(b => {
+    b.style.background   = '#0e0f1a';
+    b.style.color        = '#9294ae';
+    b.style.borderColor  = '#2b2d42';
+  });
+  if (btn) {
+    btn.style.background  = 'rgba(240,165,0,0.15)';
+    btn.style.color       = '#f0a500';
+    btn.style.borderColor = '#f0a500';
+  }
+  checkBackupReminder();
 }
 async function importVaultFile(event) {
   const file = event.target.files[0];
@@ -2348,6 +2581,7 @@ function openVaultAfterAuth() {
   document.getElementById('main-app').style.display = 'block';
   render();
   updateRecycleBadge();
+  checkBackupReminder();
   if (autoLockMinutes > 0) scheduleAutoLock();
   // Generate encMasterBySeed jika belum ada (vault lama / upgrade otomatis)
   if (masterPw && vaultMeta.recovery && !vaultMeta.encMasterBySeed) {
@@ -2822,6 +3056,18 @@ async function loadFromLocal() {
 // ════════════════════════════════
 function openSettings() {
   updateSaveInfo();
+  updateBackupStatusUI();
+  // Restore backup interval UI
+  const savedIvl = localStorage.getItem(LS_BKPIVL);
+  if (savedIvl) {
+    backupIntervalHrs = parseInt(savedIvl);
+    const btn = document.querySelector(`.bkp-btn[data-hrs="${backupIntervalHrs}"]`);
+    if (btn) setBackupInterval(backupIntervalHrs, btn);
+  } else {
+    // default 24 jam
+    const btn = document.querySelector('.bkp-btn[data-hrs="24"]');
+    if (btn) setBackupInterval(24, btn);
+  }
   // Restore autolock UI
   const saved = localStorage.getItem('vault_autolock');
   if (saved !== null) {
@@ -2846,6 +3092,11 @@ window.addEventListener('load', async () => {
   if (savedAutolock !== null) autoLockMinutes = parseInt(savedAutolock);
   const savedAutosave = localStorage.getItem('vault_autosave_enabled');
   if (savedAutosave === '0') autoSaveEnabled = false;
+  // Restore backup interval
+  const savedBkpIvl = localStorage.getItem(LS_BKPIVL);
+  if (savedBkpIvl) backupIntervalHrs = parseInt(savedBkpIvl);
+  const savedDismiss = localStorage.getItem(LS_BKPDISM);
+  if (savedDismiss) backupDismissedAt = parseInt(savedDismiss);
 
   // Check if there's saved data in localStorage
   const saved = await loadFromLocal();
@@ -3162,6 +3413,32 @@ window.addEventListener('load', () => {
       <button class="btn btn-teal btn-sm" style="flex:1;justify-content:center;" onclick="saveToLocalNow()">💾 Simpan Sekarang</button>
       <button class="btn btn-danger btn-sm" style="flex:1;justify-content:center;" onclick="clearLocalData()">🗑️ Hapus Data Lokal</button>
     </div>
+  </div>
+
+  <div style="border-top:1px solid #2b2d42;margin-bottom:22px;"></div>
+
+  <!-- BACKUP REMINDER -->
+  <div style="margin-bottom:22px;">
+    <div style="font-size:13px;font-weight:700;color:#eeeef5;margin-bottom:4px;">📤 Pengingat Backup</div>
+    <div style="font-size:12px;color:#9294ae;margin-bottom:12px;line-height:1.5;">Ingatkan untuk backup file <code>.vault</code> jika ada perubahan data. Backup melindungi data meski browser dihapus.</div>
+
+    <!-- Status backup terakhir -->
+    <div style="background:#0e0f1a;border-radius:10px;padding:12px;font-size:12px;color:#6b6d85;line-height:1.6;margin-bottom:12px;">
+      <div>📅 Backup terakhir: <span id="last-backup-time" style="color:#9294ae;">Belum pernah</span></div>
+      <div style="margin-top:4px;">📊 Status: <span id="backup-status-text" style="color:#9294ae;">—</span></div>
+    </div>
+
+    <!-- Interval pengingat -->
+    <div style="font-size:12px;color:#9294ae;margin-bottom:8px;">Ingatkan setelah berapa lama belum backup:</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;" id="backup-interval-options">
+      <button class="bkp-btn" data-hrs="12"  onclick="setBackupInterval(12,this)"  style="padding:8px 4px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:11px;font-weight:600;cursor:pointer;touch-action:manipulation;">12 jam</button>
+      <button class="bkp-btn" data-hrs="24"  onclick="setBackupInterval(24,this)"  style="padding:8px 4px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:11px;font-weight:600;cursor:pointer;touch-action:manipulation;">24 jam</button>
+      <button class="bkp-btn" data-hrs="72"  onclick="setBackupInterval(72,this)"  style="padding:8px 4px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:11px;font-weight:600;cursor:pointer;touch-action:manipulation;">3 hari</button>
+      <button class="bkp-btn" data-hrs="168" onclick="setBackupInterval(168,this)" style="padding:8px 4px;border-radius:10px;border:1px solid #2b2d42;background:#0e0f1a;color:#9294ae;font-family:Outfit,sans-serif;font-size:11px;font-weight:600;cursor:pointer;touch-action:manipulation;">7 hari</button>
+    </div>
+
+    <!-- Tombol backup -->
+    <button class="btn btn-gold btn-sm" style="width:100%;justify-content:center;" onclick="backupNow()">📤 Backup Sekarang</button>
   </div>
 
   <div style="border-top:1px solid #2b2d42;margin-bottom:22px;"></div>
