@@ -1,0 +1,70 @@
+/* ════════════════════════════════════════════
+   CSS VARIABLES — DARK MODE (default)
+   ════════════════════════════════════════════ */
+:root,
+[data-theme="dark"] {
+  --bg: #07080f;
+  --s1: #0e0f1a;
+  --s2: #161724;
+  --s3: #1e1f2e;
+  --border: #2b2d42;
+  --border2: #3a3d56;
+  --gold: #f0a500;
+  --gold2: #ffcc44;
+  --teal: #00d4aa;
+  --red: #ff4d6d;
+  --blue: #4d8eff;
+  --text: #eeeef5;
+  --text2: #c8c9d8;
+  --muted: #6b6d85;
+  --muted2: #9294ae;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Outfit', sans-serif;
+  --crypto: #f7931a;
+  --shadow: 0 4px 20px rgba(0,0,0,0.4);
+  --shadow-gold: 0 6px 20px rgba(240,165,0,0.08);
+  --logo-shadow: 0 0 40px rgba(240,165,0,0.3);
+  --overlay-bg: rgba(0,0,0,0.75);
+  --card-hover-bg: var(--s2);
+  --notice-bg: rgba(0,212,170,0.06);
+  --notice-border: rgba(0,212,170,0.18);
+  --notice-text: rgba(0,212,170,0.8);
+  --pin-key-bg: #0e0f1a;
+  --pin-key-border: #2b2d42;
+  --sidebar-bg: #0a0b14;
+  --sidebar-width: 280px;
+}
+
+/* ════════════════════════════════════════════
+   CSS VARIABLES — LIGHT MODE
+   ════════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg: #F9FAFB;
+  --s1: #FFFFFF;
+  --s2: #F3F4F6;
+  --s3: #E5E7EB;
+  --border: #D1D5DB;
+  --border2: #9CA3AF;
+  --gold: #D97706;
+  --gold2: #F59E0B;
+  --teal: #059669;
+  --red: #DC2626;
+  --blue: #2563EB;
+  --text: #111827;
+  --text2: #374151;
+  --muted: #6B7280;
+  --muted2: #4B5563;
+  --crypto: #D97706;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --shadow-gold: 0 4px 16px rgba(217,119,6,0.12);
+  --logo-shadow: 0 0 32px rgba(245,158,11,0.25);
+  --overlay-bg: rgba(0,0,0,0.5);
+  --card-hover-bg: #F9FAFB;
+  --notice-bg: rgba(5,150,105,0.06);
+  --notice-border: rgba(5,150,105,0.2);
+  --notice-text: rgba(5,150,105,0.9);
+  --pin-key-bg: #F3F4F6;
+  --pin-key-border: #D1D5DB;
+  --sidebar-bg: #F0F1F3;
+  --sidebar-width: 280px;
+}

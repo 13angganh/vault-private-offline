@@ -1,67 +1,102 @@
-// CACHE_VERSION di-inject otomatis oleh GitHub Actions saat deploy
-// Jangan edit manual — nilai ini berubah sendiri setiap push
-const CACHE = "vault-v4-20260321202551";
+/* ════════════════════════════════════════════
+   VAULT v4 — SERVICE WORKER
+   Path relatif (./) agar bisa jalan di:
+   - Firebase Hosting : vault-private-offline.web.app
+   - GitHub Pages     : 13angganh.github.io/vault-private-offline/
+   ════════════════════════════════════════════ */
 
-const ASSETS = [
-  "/vault-private-offline/",
-  "/vault-private-offline/index.html",
-  "/vault-private-offline/manifest.json",
-  "/vault-private-offline/icon-192.png",
-  "/vault-private-offline/icon-512.png"
+const CACHE_NAME   = 'vault-v4-cache-v2';
+const CACHE_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './css/variables.css',
+  './css/base.css',
+  './css/sidebar.css',
+  './css/components.css',
+  './js/crypto.js',
+  './js/state.js',
+  './js/storage.js',
+  './js/auth.js',
+  './js/render.js',
+  './js/entry.js',
+  './js/features.js',
+  './js/settings.js',
+  './js/app.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
 ];
 
-self.addEventListener("install", e => {
-  e.waitUntil(
-    caches.open(CACHE)
-      .then(c => c.addAll(ASSETS))
+/* ── INSTALL: cache semua asset ── */
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(CACHE_ASSETS))
       .then(() => self.skipWaiting())
+      .catch(err => console.warn('[SW] Install cache error:', err))
   );
 });
 
-self.addEventListener("activate", e => {
-  e.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
-      ))
-      .then(() => self.clients.claim())
+/* ── ACTIVATE: hapus cache lama ── */
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+      )
+    ).then(() => self.clients.claim())
   );
 });
 
-self.addEventListener("fetch", e => {
-  const url = new URL(e.request.url);
-  const isHTML = e.request.destination === 'document'
-              || url.pathname.endsWith('.html')
-              || url.pathname.endsWith('/');
+/* ── FETCH: Cache First untuk assets, Network First untuk HTML ── */
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;
 
-  if (isHTML) {
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
-          if (res && res.status === 200) {
-            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+  const url = new URL(event.request.url);
+
+  // Skip cross-origin (Google Fonts, CDN, dll)
+  if (url.origin !== self.location.origin) return;
+
+  // Navigasi (HTML) → Network First, fallback cache
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
           }
-          return res;
+          return response;
         })
-        .catch(() => caches.match(e.request)
-          .then(r => r || caches.match("/vault-private-offline/index.html"))
+        .catch(() =>
+          caches.match(event.request)
+            .then(cached => cached || caches.match('./index.html'))
         )
     );
-  } else {
-    e.respondWith(
-      caches.match(e.request).then(cached => {
-        if (cached) return cached;
-        return fetch(e.request).then(res => {
-          if (res && res.status === 200) {
-            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-          }
-          return res;
-        });
-      }).catch(() => caches.match("/vault-private-offline/index.html"))
-    );
+    return;
   }
+
+  // Assets (CSS, JS, img) → Cache First, fallback network
+  event.respondWith(
+    caches.match(event.request).then(cached => {
+      if (cached) return cached;
+      return fetch(event.request).then(response => {
+        if (!response || response.status !== 200 || response.type === 'opaque') {
+          return response;
+        }
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      });
+    })
+  );
 });
 
-self.addEventListener("message", e => {
-  if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
+/* ── MESSAGE: SKIP_WAITING dari app ── */
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

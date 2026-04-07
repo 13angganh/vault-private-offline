@@ -1,28 +1,72 @@
 {
-  "name": "Vault — Pencatat Akun",
+  "name": "Vault v4 — Pencatat Akun Terenkripsi",
   "short_name": "Vault",
-  "description": "Pencatat akun & password terenkripsi AES-256. Simpan email, password, dan seed phrase crypto. Sepenuhnya offline.",
-  "start_url": "/vault-private-offline/",
+  "description": "Pencatat akun dan password terenkripsi AES-256. Sepenuhnya offline.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#07080f",
   "theme_color": "#f0a500",
-  "orientation": "portrait",
+  "lang": "id",
+  "categories": ["productivity", "utilities"],
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-512.png",
+      "src": "icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
   ],
-  "categories": ["utilities", "productivity"],
-  "lang": "id",
-  "scope": "/vault-private-offline/",
-  "id": "/vault-private-offline/"
+  "shortcuts": [
+    {
+      "name": "Buka Vault",
+      "short_name": "Buka",
+      "description": "Buka Vault dan masukkan PIN",
+      "url": "/",
+      "icons": [{ "src": "icons/icon-96.png", "sizes": "96x96" }]
+    }
+  ]
 }
